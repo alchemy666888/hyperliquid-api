@@ -1,19 +1,4 @@
 export default async function handler(req, res) {
-const coins = [
-                'BTC',      // Bitcoin
-                'HYPE',     // Hyperliquid
-                'ZEC',      // Zcash
-                'GOLD',     // Gold (not XAUUSD)
-                'CL',       // Crude Oil (not CLUSD, not WTIOIL)
-                'EURUSD',   // Australian Dollar
-                'NVDA',     // NVIDIA
-                'MU',       // Micron Technology
-                'MRVL',     // Marvell Technology
-                'INTC',     // Intel
-                'SNDK',     // SanDisk
-                'SPCX'      // SpaceX
-              ];
-  
   try {
     const midsResponse = await fetch('https://api.hyperliquid.xyz/info', {
       method: 'POST',
@@ -26,22 +11,30 @@ const coins = [
     }
     
     const mids = await midsResponse.json();
-    const filtered = coins.reduce((acc, coin) => {
-      acc[coin] = mids[coin];
-      return acc;
-    }, {});
+    
+    // Show ALL available symbols
+    const allSymbols = Object.keys(mids).sort();
     
     res.json({ 
       timestamp: new Date().toISOString(), 
-      prices: filtered,
-      status: 'success'
+      totalSymbols: allSymbols.length,
+      allSymbols: allSymbols,
+      samplePrices: {
+        BTC: mids['BTC'],
+        HYPE: mids['HYPE'],
+        ZEC: mids['ZEC'],
+        GOLD: mids['GOLD'],
+        CL: mids['CL'],
+        AUDUSD: mids['AUDUSD'],
+        NVDA: mids['NVDA'],
+        MU: mids['MU']
+      }
     });
   } catch (error) {
-    console.error('Error fetching Hyperliquid data:', error);
+    console.error('Error:', error);
     res.status(500).json({ 
       error: error.message,
-      timestamp: new Date().toISOString(),
-      status: 'error'
+      timestamp: new Date().toISOString()
     });
   }
 }
