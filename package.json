@@ -2,7 +2,6 @@
   "name": "hyperliquid-api",
   "version": "1.0.0",
   "description": "Vercel serverless function that fetches real-time prices from Hyperliquid exchange",
-  "main": "api/hyperliquid.js",
   "scripts": {
     "dev": "vercel dev",
     "deploy": "vercel deploy --prod"
