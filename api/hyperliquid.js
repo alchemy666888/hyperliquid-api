@@ -26,16 +26,17 @@ const coins = [
     }
     
     const mids = await midsResponse.json();
-    const filtered = coins.reduce((acc, coin) => {
-      acc[coin] = mids[coin];
-      return acc;
-    }, {});
+    res.json(mids);
+    // const filtered = coins.reduce((acc, coin) => {
+    //   acc[coin] = mids[coin];
+    //   return acc;
+    // }, {});
     
-    res.json({ 
-      timestamp: new Date().toISOString(), 
-      prices: filtered,
-      status: 'success'
-    });
+    // res.json({ 
+    //   timestamp: new Date().toISOString(), 
+    //   prices: filtered,
+    //   status: 'success'
+    // });
   } catch (error) {
     console.error('Error fetching Hyperliquid data:', error);
     res.status(500).json({ 
