@@ -1,5 +1,9 @@
 export default async function handler(req, res) {
-  const coins = ['BTC', 'HYPE', 'ZEC', 'XAUUSD', 'CLUSD', 'AUDUSD', 'NVDA', 'MU', 'SPCX', 'SNDK', 'INTC', 'MRVL'];
+  const coins = [
+    'BTC-USDC', 'HYPE-USDC', 'ZEC-USDC', 
+    'GOLD-USDC', 'WTIOIL-USDC', 
+    'EURUSD-USDC', 
+    'NVDA-USDC', 'MU-USDC', 'SPCX-USDC', 'SNDK-USDC', 'INTC-USDC', 'MRVL-USDC'];
   
   try {
     const midsResponse = await fetch('https://api.hyperliquid.xyz/info', {
