@@ -1,5 +1,3 @@
 {
-  "version": 2,
-  "outputDirectory": null,
-  "buildCommand": "echo 'Serverless functions only'"
+  "version": 2
 }
