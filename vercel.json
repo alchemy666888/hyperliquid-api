@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "public": false,
   "buildCommand": "echo 'No build needed for serverless functions'",
   "env": [],
   "functions": {
