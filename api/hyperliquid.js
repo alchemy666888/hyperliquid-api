@@ -4,6 +4,14 @@
 
 import { getHyperliquidSnapshot } from '../lib/hyperliquid.js';
 import { getLatestHyperliquidSnapshot, getPostgresStatus } from '../lib/postgres.js';
+import { processDecisionTreeAlerts } from '../lib/alert-processor.js';
+import { sendTelegramMessage } from '../lib/telegram-client.js';
+
+function readEnv(name) {
+  const value = process.env[name];
+  if (typeof value !== 'string') return '';
+  return value.trim();
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -52,8 +60,28 @@ export default async function handler(req, res) {
     }
 
     const snapshot = await getHyperliquidSnapshot();
+    let alerts = { enabled: false, checked: 0, triggered: 0 };
+    const token = readEnv('TELEGRAM_BOT_TOKEN');
+    const postgresStatus = getPostgresStatus();
+    if (token && postgresStatus.configured) {
+      try {
+        alerts = await processDecisionTreeAlerts(
+          snapshot,
+          (chatId, text) => sendTelegramMessage(token, chatId, text),
+        );
+      } catch (error) {
+        console.error('decision-tree alert processing error:', error);
+        alerts = {
+          enabled: true,
+          checked: 0,
+          triggered: 0,
+          error: 'Decision-tree alert processing failed',
+        };
+      }
+    }
+
     res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
-    res.json(snapshot);
+    res.json({ ...snapshot, alerts });
   } catch (error) {
     console.error('handler error:', error);
     res.status(500).json({
