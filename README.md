@@ -10,6 +10,7 @@ A Vercel serverless project that exposes Hyperliquid market data through both:
 - Fetches live prices from Hyperliquid
 - Computes 4H technical indicators: ADX, RSI, MACD, EMA20/50, Bollinger Bands, ATR, and volume
 - Classifies each asset into a coarse market regime
+- Persists Hyperliquid snapshots to PostgreSQL when Vercel database env vars are configured
 - Supports Telegram commands for market summaries and per-asset details
 - Keeps the existing `/api/hyperliquid` JSON endpoint available
 
@@ -61,6 +62,52 @@ curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
 If you do not set `TELEGRAM_SECRET_TOKEN`, omit `secret_token` from the request.
 When `TELEGRAM_SECRET_TOKEN` is set, `/api/telegram` validates `x-telegram-bot-api-secret-token` for every webhook call.
 
+## PostgreSQL Persistence Setup
+
+The API stores each successful Hyperliquid snapshot in PostgreSQL JSONB when database environment variables are present.
+
+Add these variables in Vercel (`Project -> Settings -> Environment Variables`):
+
+```bash
+vercel env add POSTGRES_HOST
+vercel env add POSTGRES_PORT
+vercel env add POSTGRES_USER
+vercel env add POSTGRES_PASSWORD
+vercel env add POSTGRES_DATABASE
+```
+
+`POSTGRES_USERNAME` can be used instead of `POSTGRES_USER`, and `POSTGRES_DB` can be used instead of `POSTGRES_DATABASE`.
+
+Optional variables:
+
+```bash
+vercel env add POSTGRES_SSL
+vercel env add POSTGRES_MAX_CONNECTIONS
+```
+
+`POSTGRES_SSL` defaults to enabled on Vercel. `POSTGRES_MAX_CONNECTIONS` defaults to `1`, which keeps serverless database usage conservative.
+
+The persistence layer creates this table and index automatically on first use:
+
+```sql
+CREATE TABLE IF NOT EXISTS hyperliquid_snapshots (
+  id BIGSERIAL PRIMARY KEY,
+  source TEXT NOT NULL,
+  interval TEXT NOT NULL,
+  captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  status TEXT NOT NULL DEFAULT 'success',
+  snapshot JSONB NOT NULL
+);
+```
+
+Configuration can be checked without exposing secrets:
+
+```text
+GET https://your-domain.vercel.app/api/telegram
+```
+
+Expected response includes `config.postgres.configured: true` after all database env vars are set.
+
 ## Telegram Commands
 
 ```text
@@ -79,6 +126,14 @@ When `TELEGRAM_SECRET_TOKEN` is set, `/api/telegram` validates `x-telegram-bot-a
 ```text
 GET https://your-domain.vercel.app/api/hyperliquid
 ```
+
+Fetches live market data and saves the snapshot to PostgreSQL when configured.
+
+```text
+GET https://your-domain.vercel.app/api/hyperliquid?stored=latest
+```
+
+Returns the latest PostgreSQL snapshot without fetching fresh market data.
 
 ### Response
 
@@ -101,7 +156,13 @@ GET https://your-domain.vercel.app/api/hyperliquid
       "indicators": {}
     }
   ],
-  "status": "success"
+  "status": "success",
+  "persistence": {
+    "enabled": true,
+    "saved": true,
+    "id": "1",
+    "capturedAt": "2026-06-20T15:30:45.123Z"
+  }
 }
 ```
 
@@ -139,7 +200,8 @@ hyperliquid-api/
 │   ├── hyperliquid.js       # JSON market-data endpoint
 │   └── telegram.js          # Telegram webhook endpoint
 ├── lib/
-│   └── hyperliquid.js       # Shared Hyperliquid fetch + indicator logic
+│   ├── hyperliquid.js       # Shared Hyperliquid fetch + indicator logic
+│   └── postgres.js          # PostgreSQL persistence helpers
 ├── public/
 │   └── index.html
 ├── vercel.json
@@ -159,6 +221,7 @@ hyperliquid-api/
 |-------|----------|
 | Bot does not reply | Confirm `/api/telegram` shows `botTokenConfigured: true`, then redeploy. |
 | Webhook returns 401 | Check that Telegram `secret_token` matches `TELEGRAM_SECRET_TOKEN`. |
+| Snapshots are not saved | Confirm `/api/telegram` shows `config.postgres.configured: true`, then redeploy. |
 | `/prices` is slow | Hyperliquid candle requests can take several seconds; check Vercel logs. |
 | Empty prices | Hyperliquid may be rate-limited or returning no candles; retry later. |
 | API 404 | Confirm the deployed URL uses `/api/hyperliquid` or `/api/telegram`. |
