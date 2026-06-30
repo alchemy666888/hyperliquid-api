@@ -62,6 +62,20 @@ function isBotCommandEntity(text, entity, botUsername) {
   return normalizeBotUsername(suffix) === botUsername;
 }
 
+function isBareBotCommandEntity(text, entity) {
+  if (entity?.type !== 'bot_command') return false;
+  const command = sliceTelegramEntity(text, entity);
+  return /^\/[^@\s]+$/.test(command);
+}
+
+function isReplyToThisBot(message, botUsername) {
+  const from = message?.reply_to_message?.from;
+  if (!from?.is_bot) return false;
+
+  const replyUsername = normalizeBotUsername(String(from.username ?? ''));
+  return botUsername ? replyUsername === botUsername : true;
+}
+
 function removeTelegramEntity(text, entity) {
   const before = text.slice(0, entity.offset);
   const after = text.slice(entity.offset + entity.length);
@@ -75,14 +89,19 @@ export function getProcessableTelegramText(message, botUsernameInput = '') {
   if (!isGroupChat(message?.chat)) return text;
 
   const botUsername = normalizeBotUsername(botUsernameInput);
-  if (!botUsername) return '';
-
   const entities = message.entities ?? [];
-  const mention = entities.find(entity => isBotMentionEntity(text, entity, botUsername));
-  if (mention) return removeTelegramEntity(text, mention);
+  if (botUsername) {
+    const mention = entities.find(entity => isBotMentionEntity(text, entity, botUsername));
+    if (mention) return removeTelegramEntity(text, mention);
+  }
+
+  if (isReplyToThisBot(message, botUsername)) return text;
 
   const command = entities.find(entity => isBotCommandEntity(text, entity, botUsername));
-  return command ? text : '';
+  if (command) return text;
+
+  const bareCommand = entities.find(entity => isBareBotCommandEntity(text, entity));
+  return bareCommand ? text : '';
 }
 
 function getDeepSeekStatus() {
@@ -597,7 +616,11 @@ export default async function handler(req, res) {
       chatId,
       telegramMessageId: message.message_id,
     });
-    await sendTelegramMessage(token, chatId, reply.text, { parseMode: reply.parseMode });
+    await sendTelegramMessage(token, chatId, reply.text, {
+      parseMode: reply.parseMode,
+      messageThreadId: message.message_thread_id,
+      replyToMessageId: message.message_id,
+    });
     res.status(200).json({ status: 'sent' });
   } catch (error) {
     console.error('telegram handler error:', error);

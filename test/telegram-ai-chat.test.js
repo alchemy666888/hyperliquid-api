@@ -80,6 +80,44 @@ test('getProcessableTelegramText keeps bot-targeted group commands', () => {
   assert.equal(getProcessableTelegramText(message, 'MarketBot'), command);
 });
 
+test('getProcessableTelegramText keeps bare group commands routed to the bot', () => {
+  const command = '/help';
+  const message = {
+    chat: { id: -123, type: 'group' },
+    text: command,
+    entities: [{ type: 'bot_command', offset: 0, length: command.length }],
+  };
+
+  assert.equal(getProcessableTelegramText(message), command);
+});
+
+test('getProcessableTelegramText keeps group replies to the bot', () => {
+  const message = {
+    chat: { id: -123, type: 'supergroup' },
+    text: 'Can you explain BTC here?',
+    reply_to_message: {
+      from: { is_bot: true, username: 'MarketBot' },
+    },
+  };
+
+  assert.equal(
+    getProcessableTelegramText(message, '@MarketBot'),
+    'Can you explain BTC here?'
+  );
+});
+
+test('getProcessableTelegramText ignores group replies to other bots when username is known', () => {
+  const message = {
+    chat: { id: -123, type: 'supergroup' },
+    text: 'Can you explain BTC here?',
+    reply_to_message: {
+      from: { is_bot: true, username: 'OtherBot' },
+    },
+  };
+
+  assert.equal(getProcessableTelegramText(message, 'MarketBot'), '');
+});
+
 test('processTelegramText persists inbound and outbound chat messages through injected helper', async () => {
   const saved = [];
   const reply = await processTelegramText({
