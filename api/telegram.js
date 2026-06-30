@@ -34,6 +34,14 @@ function readEnv(name) {
   return value.trim();
 }
 
+function getDeepSeekStatus() {
+  return {
+    configured: Boolean(readEnv('DEEPSEEK_API_KEY')),
+    baseUrlConfigured: Boolean(readEnv('DEEPSEEK_BASE_URL')),
+    modelConfigured: Boolean(readEnv('DEEPSEEK_MODEL')),
+  };
+}
+
 function safeEqual(a, b) {
   const aBuf = Buffer.from(a);
   const bBuf = Buffer.from(b);
@@ -93,6 +101,7 @@ function helpMessage() {
     ['/prices', 'Show all tracked prices and regimes'],
     ['/asset BTCUSDT', 'Show 4H indicators for one asset'],
     ['/treealert', 'Save pasted decision-tree alerts'],
+    ['/condition MU', 'Classify current asset state against saved decision tree using DeepSeek'],
     ['/alerts', 'List active decision-tree alerts'],
     ['/clearalerts [MU]', 'Manually cancel active decision-tree alerts'],
     ['/help', 'Show this help'],
@@ -299,6 +308,7 @@ export default async function handler(req, res) {
         botTokenConfigured: Boolean(token),
         secretTokenConfigured: Boolean(expectedSecret),
         postgres: getPostgresStatus(),
+        deepseek: getDeepSeekStatus(),
       },
     });
     return;
