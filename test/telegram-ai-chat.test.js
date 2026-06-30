@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-const { buildReply, processTelegramText } = await import('../api/telegram.js');
+const {
+  buildReply,
+  getProcessableTelegramText,
+  processTelegramText,
+} = await import('../api/telegram.js');
 
 test('buildReply routes plain text to stateless AI chat', async () => {
   const reply = await buildReply('What about BTC right now?', 123, {
@@ -34,6 +38,46 @@ test('buildReply keeps unknown slash commands on the help path', async () => {
 
   assert.match(reply.text, /<b>Hyperliquid Market Bot<\/b>/);
   assert.match(reply.text, /\/prices/);
+});
+
+test('getProcessableTelegramText keeps private chat text unchanged', () => {
+  const message = {
+    chat: { id: 123, type: 'private' },
+    text: 'What about BTC right now?',
+  };
+
+  assert.equal(getProcessableTelegramText(message, 'MarketBot'), 'What about BTC right now?');
+});
+
+test('getProcessableTelegramText ignores group text without bot mention', () => {
+  const message = {
+    chat: { id: -123, type: 'group' },
+    text: 'What about BTC right now?',
+  };
+
+  assert.equal(getProcessableTelegramText(message, 'MarketBot'), '');
+});
+
+test('getProcessableTelegramText strips bot mention from group text', () => {
+  const mention = '@MarketBot';
+  const message = {
+    chat: { id: -123, type: 'supergroup' },
+    text: `${mention} What about BTC right now?`,
+    entities: [{ type: 'mention', offset: 0, length: mention.length }],
+  };
+
+  assert.equal(getProcessableTelegramText(message, 'marketbot'), 'What about BTC right now?');
+});
+
+test('getProcessableTelegramText keeps bot-targeted group commands', () => {
+  const command = '/help@MarketBot';
+  const message = {
+    chat: { id: -123, type: 'group' },
+    text: command,
+    entities: [{ type: 'bot_command', offset: 0, length: command.length }],
+  };
+
+  assert.equal(getProcessableTelegramText(message, 'MarketBot'), command);
 });
 
 test('processTelegramText persists inbound and outbound chat messages through injected helper', async () => {
