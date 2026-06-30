@@ -69,24 +69,44 @@ If you do not set `TELEGRAM_SECRET_TOKEN`, omit `secret_token` from the request.
 When `TELEGRAM_SECRET_TOKEN` is set, `/api/telegram` validates `x-telegram-bot-api-secret-token` for every webhook call.
 
 
-## DeepSeek AI Setup
+## AI Model Setup
 
-The bot uses DeepSeek for `/condition <symbol>` classification and for normal no-command AI chat. No-command chat is stateless: each reply only uses the current user message plus fresh Hyperliquid market context, even though the raw communication history is persisted when PostgreSQL is configured.
+The bot uses the configured AI provider for `/condition <symbol>` classification and for normal no-command AI chat. No-command chat is stateless: each reply only uses the current user message plus fresh Hyperliquid market context, even though the raw communication history is persisted when PostgreSQL is configured.
 
-Required variable:
+Choose the provider with `AI_MODEL_PROVIDER`. Supported values are `DEEPSEEK` and `CLAUDE`; if this variable is omitted, the bot keeps the existing default of `DEEPSEEK`.
+
+```bash
+vercel env add AI_MODEL_PROVIDER
+```
+
+Required variable for DeepSeek:
 
 ```bash
 vercel env add DEEPSEEK_API_KEY
 ```
 
-Optional variables:
+Required variable for Claude:
+
+```bash
+vercel env add CLAUDE_API_KEY
+```
+
+Optional DeepSeek variables:
 
 ```bash
 vercel env add DEEPSEEK_BASE_URL
 vercel env add DEEPSEEK_MODEL
 ```
 
-`DEEPSEEK_BASE_URL` is optional when using DeepSeek's default API endpoint. `DEEPSEEK_MODEL` is optional when the app default model is acceptable. Redeploy after changing environment variables:
+Optional Claude variables:
+
+```bash
+vercel env add CLAUDE_BASE_URL
+vercel env add CLAUDE_MODEL
+vercel env add CLAUDE_ANTHROPIC_VERSION
+```
+
+`DEEPSEEK_BASE_URL` and `CLAUDE_BASE_URL` are optional when using the providers' default API endpoints. `DEEPSEEK_MODEL` and `CLAUDE_MODEL` are optional when the app default models are acceptable. Redeploy after changing environment variables:
 
 ```bash
 vercel deploy --prod
@@ -98,7 +118,7 @@ Configuration can be checked without exposing secret values:
 GET https://your-domain.vercel.app/api/telegram
 ```
 
-Expected response includes `config.deepseek.configured: true` when `DEEPSEEK_API_KEY` is set. The GET config response exposes only booleans for DeepSeek, such as `configured`, `baseUrlConfigured`, and `modelConfigured`; it does not return the API key, base URL, or model value.
+Expected response includes `config.ai.provider` and `config.ai.configured: true` when the selected provider has its API key set. The GET config response exposes only non-secret provider names, missing variable names, and booleans such as `configured`, `baseUrlConfigured`, and `modelConfigured`; it does not return API keys, base URLs, or model values.
 
 ## PostgreSQL Persistence Setup
 
@@ -321,9 +341,9 @@ hyperliquid-api/
 | Bot does not reply | Confirm `/api/telegram` shows `botTokenConfigured: true`, then redeploy. |
 | Webhook returns 401 | Check that Telegram `secret_token` matches `TELEGRAM_SECRET_TOKEN`. |
 | Snapshots are not saved | Confirm `/api/telegram` shows `config.postgres.configured: true`, then redeploy. |
-| `/condition` says DeepSeek is not configured | Add `DEEPSEEK_API_KEY` with `vercel env add DEEPSEEK_API_KEY`, redeploy, and confirm `/api/telegram` shows `config.deepseek.configured: true`. |
-| Malformed AI response | DeepSeek returned text that could not be parsed into the expected classification format; retry the command and check Vercel logs for the non-secret parse error. |
-| Fallback deterministic behavior | If DeepSeek is unavailable or its response is malformed, the bot should fall back to deterministic rule evaluation from the saved decision tree so no secret values are logged or exposed. |
+| `/condition` says AI is not configured | Set `AI_MODEL_PROVIDER` to `CLAUDE` or `DEEPSEEK`, add the matching `CLAUDE_API_KEY` or `DEEPSEEK_API_KEY`, redeploy, and confirm `/api/telegram` shows `config.ai.configured: true`. |
+| Malformed AI response | The selected AI provider returned text that could not be parsed into the expected classification format; retry the command and check Vercel logs for the non-secret parse error. |
+| Fallback deterministic behavior | If the selected AI provider is unavailable or its response is malformed, the bot should fall back to deterministic rule evaluation from the saved decision tree so no secret values are logged or exposed. |
 | `/prices` is slow | Hyperliquid candle requests can take several seconds; check Vercel logs. |
 | Empty prices | Hyperliquid may be rate-limited or returning no candles; retry later. |
 | API 404 | Confirm the deployed URL uses `/api/hyperliquid` or `/api/telegram`. |

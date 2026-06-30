@@ -13,6 +13,7 @@ import {
 } from '../lib/decision-tree-alerts.js';
 import { classifyAssetDecisionTreeCondition } from '../lib/ai-decision-tree-alerts.js';
 import { answerStatelessAiChat } from '../lib/conversational-ai.js';
+import { getAiStatus } from '../lib/ai-client.js';
 import { sendTelegramMessage } from '../lib/telegram-client.js';
 import {
   formatTelegramDate,
@@ -102,14 +103,6 @@ export function getProcessableTelegramText(message, botUsernameInput = '') {
 
   const bareCommand = entities.find(entity => isBareBotCommandEntity(text, entity));
   return bareCommand ? text : '';
-}
-
-function getDeepSeekStatus() {
-  return {
-    configured: Boolean(readEnv('DEEPSEEK_API_KEY')),
-    baseUrlConfigured: Boolean(readEnv('DEEPSEEK_BASE_URL')),
-    modelConfigured: Boolean(readEnv('DEEPSEEK_MODEL')),
-  };
 }
 
 function safeEqual(a, b) {
@@ -565,6 +558,7 @@ export default async function handler(req, res) {
   const botUsername = readEnv('TELEGRAM_BOT_USERNAME');
 
   if (req.method === 'GET') {
+    const aiStatus = getAiStatus();
     res.status(200).json({
       status: 'ok',
       service: 'telegram-webhook',
@@ -574,7 +568,8 @@ export default async function handler(req, res) {
         botUsernameConfigured: Boolean(botUsername),
         secretTokenConfigured: Boolean(expectedSecret),
         postgres: getPostgresStatus(),
-        deepseek: getDeepSeekStatus(),
+        ai: aiStatus,
+        deepseek: aiStatus.deepseek,
       },
     });
     return;
