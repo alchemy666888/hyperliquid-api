@@ -148,7 +148,13 @@ Supported condition styles are `above`, `below`/`closes below`, `between`, and r
 
 Alerts expire 24 hours after they are saved, or sooner when cancelled with `/clearalerts [symbol]`. Active alerts are scoped to the Telegram chat that created them; `/alerts`, `/clearalerts`, and alert notifications only use that chat's saved alerts.
 
-Vercel Cron calls `/api/hyperliquid` every 10 minutes to fetch the latest prices and process active alerts. The bot sends a Telegram message when a saved condition changes from inactive to active, then rearms after the price leaves that condition. Use `/alerts` to list active alerts and `/clearalerts [symbol]` to deactivate them manually.
+Run the JavaScript alert scheduler to fetch the latest prices and process active alerts every 10 minutes. The bot sends a Telegram message when a saved condition changes from inactive to active, then rearms after the price leaves that condition. Use `/alerts` to list active alerts and `/clearalerts [symbol]` to deactivate them manually.
+
+```bash
+npm run alert-scheduler
+```
+
+The scheduler is a long-running Node process. Set `ALERT_SCHEDULER_INTERVAL_MS` to override the default 10-minute interval.
 
 ## API Usage
 
@@ -159,7 +165,7 @@ GET https://your-domain.vercel.app/api/hyperliquid
 ```
 
 Fetches live market data and saves the snapshot to PostgreSQL when configured.
-This endpoint is also invoked by Vercel Cron every 10 minutes so alert checks run without a manual request.
+Manual requests to this endpoint also process active alerts. For automatic alert checks, run the JavaScript scheduler with `npm run alert-scheduler`.
 
 ```text
 GET https://your-domain.vercel.app/api/hyperliquid?stored=latest
