@@ -10,7 +10,7 @@ A Vercel serverless project that exposes Hyperliquid market data through both:
 - Fetches live prices from Hyperliquid
 - Computes 4H technical indicators: ADX, RSI, MACD, EMA20/50, Bollinger Bands, ATR, and volume
 - Classifies each asset into a coarse market regime
-- Persists Hyperliquid snapshots to PostgreSQL when Vercel database env vars are configured
+- Persists Hyperliquid snapshots and Telegram decision-tree alerts to PostgreSQL when Vercel database env vars are configured
 - Supports Telegram commands for market summaries and per-asset details
 - Keeps the existing `/api/hyperliquid` JSON endpoint available
 
@@ -115,9 +115,38 @@ Expected response includes `config.postgres.configured: true` after all database
 /help
 /prices
 /asset BTCUSDT
+/treealert
+/alerts
+/clearalerts [MU]
 ```
 
 `/prices` returns all tracked prices and regimes. `/asset <symbol>` returns a detailed 4H indicator snapshot for one asset.
+
+### Decision-tree alerts
+
+Use `/treealert` followed by a pasted decision tree to save price alerts for the current Telegram chat:
+
+```text
+/treealert
+MU above $1,164 and holds?
+→ Long toward $1,198, then $1,220–$1,228, then $1,249–$1,255.
+
+MU rejects $1,155–$1,164?
+→ No long. Wait for pullback to $1,126–$1,116.
+
+MU holds $1,126–$1,116?
+→ Tactical long with stop at $1,108.
+
+MU closes below $1,111?
+→ Bearish breakdown. Short toward $1,059–$1,056, then $1,025.
+
+MU between $1,126 and $1,164?
+→ No trade.
+```
+
+Supported condition styles are `above`, `below`/`closes below`, `between`, and range conditions such as `holds $1,126–$1,116` or `rejects $1,155–$1,164`.
+
+Alerts are checked whenever `/api/hyperliquid` refreshes market data. The bot sends a Telegram message when a saved condition changes from inactive to active, then rearms after the price leaves that condition. Use `/alerts` to list active alerts and `/clearalerts [symbol]` to deactivate them.
 
 ## API Usage
 

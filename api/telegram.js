@@ -1,8 +1,17 @@
 import { ASSETS, getHyperliquidSnapshot } from '../lib/hyperliquid.js';
-import { getPostgresStatus } from '../lib/postgres.js';
+import {
+  clearDecisionTreeAlerts,
+  getPostgresStatus,
+  listDecisionTreeAlerts,
+  saveDecisionTreeAlerts,
+} from '../lib/postgres.js';
+import {
+  formatDecisionTreeRuleSummary,
+  normalizeAlertSymbol,
+  parseDecisionTreeAlertText,
+} from '../lib/decision-tree-alerts.js';
+import { sendTelegramMessage } from '../lib/telegram-client.js';
 import { timingSafeEqual } from 'node:crypto';
-
-const TELEGRAM_API_BASE = 'https://api.telegram.org';
 
 function getHeader(req, name) {
   const key = name.toLowerCase();
@@ -30,9 +39,10 @@ function safeEqual(a, b) {
 }
 
 function parseCommand(text) {
-  const [rawCommand = '', ...args] = text.trim().split(/\s+/);
+  const [, rawCommand = '', body = ''] = text.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/) ?? [];
   const command = rawCommand.split('@')[0].toLowerCase();
-  return { command, args };
+  const args = body.trim() ? body.trim().split(/\s+/) : [];
+  return { command, args, body: body.trim() };
 }
 
 function formatNumber(value) {
@@ -69,7 +79,15 @@ function helpMessage() {
     'Commands:',
     '/prices - show all tracked prices and regimes',
     '/asset BTCUSDT - show 4H indicators for one asset',
+    '/treealert - save pasted decision-tree alerts',
+    '/alerts - list active decision-tree alerts',
+    '/clearalerts [MU] - clear active decision-tree alerts',
     '/help - show this help',
+    '',
+    'Decision-tree setup:',
+    '/treealert',
+    'MU above $1,164 and holds?',
+    '-> Long toward $1,198',
     '',
     `Tracked assets: ${ASSETS.map(asset => asset.label).join(', ')}`,
   ].join('\n');
@@ -108,25 +126,98 @@ function assetMessage(asset, snapshot) {
   ].join('\n');
 }
 
-async function sendTelegramMessage(token, chatId, text) {
-  const response = await fetch(`${TELEGRAM_API_BASE}/bot${token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      disable_web_page_preview: true,
-    }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Telegram sendMessage HTTP ${response.status}: ${body}`);
-  }
+function treeAlertUsage() {
+  return [
+    'Usage:',
+    '/treealert',
+    'MU above $1,164 and holds?',
+    '-> Long toward $1,198',
+    '',
+    'Supported conditions: above, below/closes below, between, holds/rejects with a price range.',
+  ].join('\n');
 }
 
-async function buildReply(text) {
-  const { command, args } = parseCommand(text);
+function postgresRequiredMessage() {
+  const status = getPostgresStatus();
+  const missing = status.missing?.length ? ` Missing: ${status.missing.join(', ')}` : '';
+  return `Decision-tree alerts require PostgreSQL persistence to be configured.${missing}`;
+}
+
+function savedAlertsMessage(alerts) {
+  const symbols = [...new Set(alerts.map(alert => alert.symbol))].join(', ');
+  return [
+    `Saved ${alerts.length} decision-tree alert${alerts.length === 1 ? '' : 's'} for ${symbols}.`,
+    'Alerts fire when market data refreshes and a condition moves from inactive to active.',
+    '',
+    ...alerts.map(formatDecisionTreeRuleSummary),
+  ].join('\n');
+}
+
+function listAlertsMessage(alerts) {
+  if (!alerts?.length) {
+    return 'No active decision-tree alerts for this chat.';
+  }
+
+  return [
+    'Active decision-tree alerts:',
+    '',
+    ...alerts.map(formatDecisionTreeRuleSummary),
+  ].join('\n');
+}
+
+async function setupTreeAlerts(body, chatId) {
+  if (!body) return treeAlertUsage();
+  if (!getPostgresStatus().configured) return postgresRequiredMessage();
+
+  const parsed = parseDecisionTreeAlertText(body, { assets: ASSETS });
+  if (parsed.errors.length) {
+    return [
+      'Could not save decision-tree alerts:',
+      ...parsed.errors.map(error => `- ${error}`),
+      '',
+      treeAlertUsage(),
+    ].join('\n');
+  }
+
+  if (!parsed.rules.length) return treeAlertUsage();
+
+  const alerts = await saveDecisionTreeAlerts({
+    chatId,
+    rawTree: body,
+    rules: parsed.rules,
+  });
+
+  if (!alerts) return postgresRequiredMessage();
+  return savedAlertsMessage(alerts);
+}
+
+async function listTreeAlerts(chatId) {
+  if (!getPostgresStatus().configured) return postgresRequiredMessage();
+  const alerts = await listDecisionTreeAlerts(chatId);
+  if (!alerts) return postgresRequiredMessage();
+  return listAlertsMessage(alerts);
+}
+
+async function clearTreeAlerts(chatId, symbolInput) {
+  if (!getPostgresStatus().configured) return postgresRequiredMessage();
+  const input = symbolInput ? normalizeAlertSymbol(symbolInput) : '';
+  const asset = input
+    ? ASSETS.find(item => {
+      const label = normalizeAlertSymbol(item.label);
+      const coin = normalizeAlertSymbol(String(item.coin).replace('xyz:', ''));
+      const base = label.endsWith('USDT') ? label.slice(0, -4) : label;
+      return input === label || input === coin || input === base;
+    })
+    : null;
+  const symbol = asset?.label ?? input;
+  const cleared = await clearDecisionTreeAlerts(chatId, symbol);
+  if (cleared == null) return postgresRequiredMessage();
+  const scope = symbol ? ` for ${symbol}` : '';
+  return `Cleared ${cleared} active decision-tree alert${cleared === 1 ? '' : 's'}${scope}.`;
+}
+
+async function buildReply(text, chatId) {
+  const { command, args, body } = parseCommand(text);
 
   if (command === '/start' || command === '/help') {
     return helpMessage();
@@ -149,6 +240,18 @@ async function buildReply(text) {
     }
 
     return assetMessage(asset, snapshot);
+  }
+
+  if (command === '/treealert' || command === '/decisiontree') {
+    return setupTreeAlerts(body, chatId);
+  }
+
+  if (command === '/alerts') {
+    return listTreeAlerts(chatId);
+  }
+
+  if (command === '/clearalerts') {
+    return clearTreeAlerts(chatId, args[0]);
   }
 
   return helpMessage();
@@ -203,7 +306,7 @@ export default async function handler(req, res) {
       return;
     }
 
-    const reply = await buildReply(text);
+    const reply = await buildReply(text, chatId);
     await sendTelegramMessage(token, chatId, reply);
     res.status(200).json({ status: 'sent' });
   } catch (error) {
