@@ -106,6 +106,12 @@ vercel env add CLAUDE_MODEL
 vercel env add CLAUDE_ANTHROPIC_VERSION
 ```
 
+Optional weather variable for bare weather questions such as `今天天气如何`:
+
+```bash
+vercel env add DEFAULT_WEATHER_LOCATION
+```
+
 `DEEPSEEK_BASE_URL` and `CLAUDE_BASE_URL` are optional when using the providers' default API endpoints. `DEEPSEEK_MODEL` and `CLAUDE_MODEL` are optional when the app default models are acceptable. Redeploy after changing environment variables:
 
 ```bash

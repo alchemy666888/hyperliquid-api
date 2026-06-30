@@ -21,6 +21,37 @@ const snapshot = {
   ],
 };
 
+const weatherSnapshot = {
+  requestedLocation: 'Kuala Lumpur',
+  location: {
+    name: 'Kuala Lumpur',
+    country: 'Malaysia',
+    timezone: 'Asia/Kuala_Lumpur',
+  },
+  current: {
+    time: '2026-07-01T08:00',
+    weather_code: 2,
+    temperature_2m: 31.4,
+    apparent_temperature: 35.2,
+    relative_humidity_2m: 72,
+    wind_speed_10m: 8.6,
+  },
+  currentUnits: {
+    temperature_2m: '°C',
+    apparent_temperature: '°C',
+    wind_speed_10m: 'km/h',
+  },
+  today: {
+    weatherCode: 61,
+    temperatureMin: 25.1,
+    temperatureMax: 32.8,
+    precipitationProbabilityMax: 60,
+  },
+  dailyUnits: {
+    temperature_2m_max: '°C',
+  },
+};
+
 test('answerStatelessAiChat sends only current request and market context to AI', async () => {
   let aiRequest;
   const reply = await answerStatelessAiChat({
@@ -51,6 +82,73 @@ test('answerStatelessAiChat sends only current request and market context to AI'
   assert.equal(userPayload.marketContext.assets[0].symbol, 'BTCUSDT');
   assert.equal(Object.hasOwn(userPayload, 'history'), false);
   assert.equal(Object.hasOwn(userPayload, 'previousMessages'), false);
+});
+
+test('answerStatelessAiChat answers bare Chinese weather query with default location', async () => {
+  const previousDefault = process.env.DEFAULT_WEATHER_LOCATION;
+  process.env.DEFAULT_WEATHER_LOCATION = 'Kuala Lumpur';
+  let weatherLocation;
+  let aiCalled = false;
+  let snapshotCalled = false;
+
+  try {
+    const reply = await answerStatelessAiChat({
+      message: '今天天气如何',
+      getSnapshot: async () => {
+        snapshotCalled = true;
+        return snapshot;
+      },
+      getWeather: async ({ location }) => {
+        weatherLocation = location;
+        return weatherSnapshot;
+      },
+      deepSeekChat: async () => {
+        aiCalled = true;
+        return { ok: true, text: 'AI should not answer weather.' };
+      },
+    });
+
+    assert.equal(reply.parseMode, 'HTML');
+    assert.equal(weatherLocation, 'Kuala Lumpur');
+    assert.equal(aiCalled, false);
+    assert.equal(snapshotCalled, false);
+    assert.match(reply.text, /<b>天气<\/b>/);
+    assert.match(reply.text, /未指定城市，按默认地点 Kuala Lumpur, Malaysia 查询。/);
+    assert.match(reply.text, /当前：局部多云/);
+    assert.match(reply.text, /最高降雨概率 60%/);
+  } finally {
+    if (previousDefault == null) {
+      delete process.env.DEFAULT_WEATHER_LOCATION;
+    } else {
+      process.env.DEFAULT_WEATHER_LOCATION = previousDefault;
+    }
+  }
+});
+
+test('answerStatelessAiChat extracts Chinese weather city before querying', async () => {
+  let weatherLocation;
+
+  const reply = await answerStatelessAiChat({
+    message: '上海今天天气如何',
+    getSnapshot: async () => {
+      throw new Error('market snapshot should not be fetched for weather');
+    },
+    getWeather: async ({ location }) => {
+      weatherLocation = location;
+      return {
+        ...weatherSnapshot,
+        requestedLocation: location,
+        location: { name: 'Shanghai', country: 'China' },
+      };
+    },
+    deepSeekChat: async () => {
+      throw new Error('AI should not answer weather');
+    },
+  });
+
+  assert.equal(weatherLocation, '上海');
+  assert.match(reply.text, /Shanghai, China 的天气：/);
+  assert.doesNotMatch(reply.text, /未指定城市/);
 });
 
 test('answerStatelessAiChat supports daily-life chat without market footer', async () => {
