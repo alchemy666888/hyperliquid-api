@@ -44,3 +44,31 @@ test('sendTelegramMessage omits parse mode by default', async () => {
 
   assert.equal(payload.parse_mode, undefined);
 });
+
+test('sendTelegramMessage includes group thread and reply metadata', async () => {
+  const originalFetch = globalThis.fetch;
+  let payload;
+
+  globalThis.fetch = async (_url, options) => {
+    payload = JSON.parse(options.body);
+    return {
+      ok: true,
+    };
+  };
+
+  try {
+    await sendTelegramMessage('token', -123, 'Hello group', {
+      messageThreadId: 456,
+      replyToMessageId: 789,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(payload.chat_id, -123);
+  assert.equal(payload.message_thread_id, 456);
+  assert.deepEqual(payload.reply_parameters, {
+    message_id: 789,
+    allow_sending_without_reply: true,
+  });
+});
