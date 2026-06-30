@@ -81,13 +81,15 @@ function helpMessage() {
     '/asset BTCUSDT - show 4H indicators for one asset',
     '/treealert - save pasted decision-tree alerts',
     '/alerts - list active decision-tree alerts',
-    '/clearalerts [MU] - clear active decision-tree alerts',
+    '/clearalerts [MU] - manually cancel active decision-tree alerts',
     '/help - show this help',
     '',
     'Decision-tree setup:',
     '/treealert',
     'MU above $1,164 and holds?',
     '-> Long toward $1,198',
+    '',
+    'Alerts expire after 24 hours unless manually cancelled with /clearalerts.',
     '',
     `Tracked assets: ${ASSETS.map(asset => asset.label).join(', ')}`,
   ].join('\n');
@@ -134,6 +136,7 @@ function treeAlertUsage() {
     '-> Long toward $1,198',
     '',
     'Supported conditions: above, below/closes below, between, holds/rejects with a price range.',
+    'Alerts expire after 24 hours or when cancelled with /clearalerts.',
   ].join('\n');
 }
 
@@ -147,9 +150,10 @@ function savedAlertsMessage(alerts) {
   const symbols = [...new Set(alerts.map(alert => alert.symbol))].join(', ');
   return [
     `Saved ${alerts.length} decision-tree alert${alerts.length === 1 ? '' : 's'} for ${symbols}.`,
-    'Alerts fire when market data refreshes and a condition moves from inactive to active.',
+    'Alerts fire every 10-minute market refresh when a condition moves from inactive to active.',
+    'They expire after 24 hours unless manually cancelled with /clearalerts.',
     '',
-    ...alerts.map(formatDecisionTreeRuleSummary),
+    ...alerts.map(alert => formatDecisionTreeRuleSummary(alert, { includeExpiration: true })),
   ].join('\n');
 }
 
@@ -159,9 +163,9 @@ function listAlertsMessage(alerts) {
   }
 
   return [
-    'Active decision-tree alerts:',
+    'Active decision-tree alerts (expire after 24 hours unless cancelled):',
     '',
-    ...alerts.map(formatDecisionTreeRuleSummary),
+    ...alerts.map(alert => formatDecisionTreeRuleSummary(alert, { includeExpiration: true })),
   ].join('\n');
 }
 

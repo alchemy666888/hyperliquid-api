@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   formatDecisionTreeAlertHit,
+  formatDecisionTreeRuleSummary,
   matchesDecisionTreeRule,
   parseDecisionTreeAlertText,
 } from '../lib/decision-tree-alerts.js';
@@ -62,4 +63,19 @@ test('formats triggered alert message', () => {
   assert.match(message, /Decision-tree alert hit: MU/);
   assert.match(message, /Price: \$1,198/);
   assert.match(message, /Condition: MU above \$1,164 and holds\?/);
+});
+
+test('formats alert summaries with optional expiration metadata', () => {
+  const { rules } = parseDecisionTreeAlertText(MU_TREE, { assets: ASSETS });
+  const expiresAt = '2026-07-01T07:25:00.000Z';
+  const summary = formatDecisionTreeRuleSummary(
+    { ...rules[0], id: 42, expiresAt },
+    { includeExpiration: true },
+  );
+
+  assert.equal(
+    summary,
+    '#42 MU above $1,164 and holds? -> Long toward $1,198, then $1,220–$1,228, then $1,249–$1,255. (expires 2026-07-01T07:25:00.000Z)',
+  );
+  assert.doesNotMatch(formatDecisionTreeRuleSummary({ ...rules[0], expiresAt }), /expires/);
 });
