@@ -261,31 +261,16 @@ async function clearTreeAlerts(chatId, symbolInput) {
   ]);
 }
 
-async function conditionMessage({ chatId, symbolInput, deps = {} }) {
-  if (!symbolInput) {
-    return telegramTableMessage('Decision-tree condition usage', [
-      ['Usage', '/condition MU'],
-    ]);
-  }
-
-  if (!getPostgresStatus().configured) return postgresRequiredMessage();
-
-  const snapshot = await (deps.getHyperliquidSnapshot ?? getHyperliquidSnapshot)();
-  const asset = findAsset(snapshot, symbolInput);
-  if (!asset) {
-    return telegramTableMessage('Unknown asset', [
-      ['Input', symbolInput],
-      ['Tracked', ASSETS.map(item => item.label).join(', ')],
-    ]);
-  }
-
+async function evaluateAssetCondition({ chatId, asset, deps = {} }) {
   const alerts = await (deps.getDecisionTreeAlertsForSymbol ?? getDecisionTreeAlertsForSymbol)(chatId, asset.symbol);
-  if (!alerts) return postgresRequiredMessage();
+  if (!alerts) return { status: 'postgres-required', asset };
   if (!alerts.length) {
-    return telegramTableMessage('No active decision tree', [
-      ['Symbol', asset.symbol],
-      ['Next step', 'Create one with /treealert.'],
-    ]);
+    return {
+      status: 'no-active-tree',
+      asset,
+      condition: 'No active decision tree',
+      action: 'Create one with /treealert.',
+    };
   }
 
   const classification = await (deps.classifyAssetDecisionTreeCondition ?? classifyAssetDecisionTreeCondition)({
@@ -295,10 +280,29 @@ async function conditionMessage({ chatId, symbolInput, deps = {} }) {
     activeRules: alerts,
     rawTree: alerts[0]?.rawTree ?? '',
   });
-  const matched = alerts.filter(alert => classification.matchedRuleIds.map(String).includes(String(alert.id)));
+  const matchedRuleIds = (classification.matchedRuleIds ?? []).map(String);
+  const matched = alerts.filter(alert => matchedRuleIds.includes(String(alert.id)));
   const condition = matched.map(alert => alert.conditionText).join('; ') || classification.currentCondition;
   const action = matched.map(alert => alert.actionText).join('; ') || classification.decision;
 
+  return {
+    status: 'ok',
+    asset,
+    classification,
+    condition,
+    action,
+  };
+}
+
+function singleAssetConditionMessage(result) {
+  if (result.status === 'no-active-tree') {
+    return telegramTableMessage('No active decision tree', [
+      ['Symbol', result.asset.symbol],
+      ['Next step', result.action],
+    ]);
+  }
+
+  const { asset, classification, condition, action } = result;
   return telegramTableMessage(`Decision-tree condition: ${asset.symbol}`, [
     ['Symbol', asset.symbol],
     ['Price', formatNumber(classification.price ?? asset.price)],
@@ -307,6 +311,64 @@ async function conditionMessage({ chatId, symbolInput, deps = {} }) {
     ['Confidence', `${Math.round(Number(classification.confidence ?? 0) * 100)}% (${classification.source ?? 'ai'})`],
     ['AI reasoning', classification.reasoningSummary],
   ]);
+}
+
+function allAssetConditionsMessage(results, snapshot) {
+  const rows = results
+    .toSorted((a, b) => a.asset.symbol.localeCompare(b.asset.symbol))
+    .map(result => {
+      if (result.status === 'no-active-tree') {
+        return [result.asset.symbol, 'No active decision tree'];
+      }
+
+      const price = formatNumber(result.classification.price ?? result.asset.price);
+      return [
+        result.asset.symbol,
+        `${price} | ${result.condition} | ${result.action}`,
+      ];
+    });
+
+  return telegramTableMessage('Decision-tree conditions', [
+    ['Updated', formatTelegramDate(snapshot.timestamp)],
+    { separator: true },
+    ...rows,
+  ]);
+}
+
+async function conditionMessage({ chatId, symbolInput, deps = {} }) {
+  if (!getPostgresStatus().configured) return postgresRequiredMessage();
+
+  const snapshot = await (deps.getHyperliquidSnapshot ?? getHyperliquidSnapshot)();
+
+  if (symbolInput) {
+    const asset = findAsset(snapshot, symbolInput);
+    if (!asset) {
+      return telegramTableMessage('Unknown asset', [
+        ['Input', symbolInput],
+        ['Tracked', ASSETS.map(item => item.label).join(', ')],
+      ]);
+    }
+
+    const result = await evaluateAssetCondition({ chatId, asset, deps });
+    if (result.status === 'postgres-required') return postgresRequiredMessage();
+    return singleAssetConditionMessage(result);
+  }
+
+  const assets = [...(snapshot.assets ?? [])];
+  if (!assets.length) {
+    return telegramTableMessage('Decision-tree conditions', [
+      ['Status', 'No configured assets are available to evaluate.'],
+    ]);
+  }
+
+  const results = [];
+  for (const asset of assets) {
+    const result = await evaluateAssetCondition({ chatId, asset, deps });
+    if (result.status === 'postgres-required') return postgresRequiredMessage();
+    results.push(result);
+  }
+
+  return allAssetConditionsMessage(results, snapshot);
 }
 
 export async function buildReply(text, chatId, deps = {}) {
