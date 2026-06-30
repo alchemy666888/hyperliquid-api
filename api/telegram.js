@@ -7,7 +7,7 @@ import {
 } from '../lib/postgres.js';
 import {
   normalizeAlertSymbol,
-  parseDecisionTreeAlertText,
+  parseDecisionTreeAlertTextWithAi,
 } from '../lib/decision-tree-alerts.js';
 import { sendTelegramMessage } from '../lib/telegram-client.js';
 import {
@@ -192,10 +192,12 @@ async function setupTreeAlerts(body, chatId) {
   if (!body) return treeAlertUsage();
   if (!getPostgresStatus().configured) return postgresRequiredMessage();
 
-  const parsed = parseDecisionTreeAlertText(body, { assets: ASSETS });
-  if (parsed.errors.length) {
+  const parsed = await parseDecisionTreeAlertTextWithAi(body, { assets: ASSETS });
+  if (parsed.errors.length && !parsed.rules.length) {
+    const rows = parsed.errors.map((error, index) => [`Error ${index + 1}`, error]);
+    if (parsed.aiMessage) rows.push([parsed.aiUnavailable ? 'AI unavailable' : 'AI parser', parsed.aiMessage]);
     return telegramTableMessage('Could not save decision-tree alerts', [
-      ...parsed.errors.map((error, index) => [`Error ${index + 1}`, error]),
+      ...rows,
       { separator: true },
       ['Usage', '/treealert | MU above $1,164 and holds? | -> Long toward $1,198'],
     ]);
@@ -210,7 +212,14 @@ async function setupTreeAlerts(body, chatId) {
   });
 
   if (!alerts) return postgresRequiredMessage();
-  return savedAlertsMessage(alerts);
+  const message = savedAlertsMessage(alerts);
+  if (parsed.aiMessage || parsed.source === 'ai') {
+    const note = parsed.source === 'ai'
+      ? 'Parsed with AI after deterministic parsing needed help.'
+      : parsed.aiMessage;
+    return { ...message, text: `${message.text}\n\n<i>${note}</i>` };
+  }
+  return message;
 }
 
 async function listTreeAlerts(chatId) {
