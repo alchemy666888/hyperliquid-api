@@ -1,70 +1,99 @@
-# Hyperliquid Real-Time Data API
+# Hyperliquid Telegram Bot and Data API
 
-A Vercel serverless function that fetches real-time market prices from Hyperliquid exchange for trading analysis.
+A Vercel serverless project that exposes Hyperliquid market data through both:
+
+- A Telegram bot webhook for quick chat commands
+- A JSON API endpoint for integrations and trading analysis
 
 ## Features
 
-- ✅ Fetches live prices from Hyperliquid API
-- ✅ Supports 12 trading assets (BTC, HYPE, ZEC, XAUUSD, CLUSD, AUDUSD, NVDA, MU, SPCX, SNDK, INTC, MRVL)
-- ✅ Returns JSON with timestamp for synced analysis
-- ✅ Error handling & logging
-- ✅ CORS enabled for cross-origin requests
-- ✅ No authentication required
+- Fetches live prices from Hyperliquid
+- Computes 4H technical indicators: ADX, RSI, MACD, EMA20/50, Bollinger Bands, ATR, and volume
+- Classifies each asset into a coarse market regime
+- Supports Telegram commands for market summaries and per-asset details
+- Keeps the existing `/api/hyperliquid` JSON endpoint available
 
-## Deployment
+## Tracked Assets
 
-### Quick Deploy to Vercel
+`BTCUSDT`, `HYPEUSDT`, `ZECUSDT`, `XAUUSD`, `CLUSD`, `EURUSD`, `NVDA`, `MU`, `SPCX`, `SNDK`, `INTC`, `MRVL`
 
-1. Fork/clone this repo
-2. Go to [vercel.com](https://vercel.com)
-3. Import project → select your GitHub repo
-4. Click Deploy
-5. Your API is live immediately!
+## Telegram Bot Setup
 
-### Manual Setup
+1. Create a bot with [BotFather](https://t.me/BotFather) and copy the bot token.
+2. Add Vercel environment variables:
 
 ```bash
-# Clone repo
-git clone https://github.com/your-username/hyperliquid-api
-cd hyperliquid-api
-
-# Install Vercel CLI (optional)
-npm install -g vercel
-
-# Deploy
-vercel
+vercel env add TELEGRAM_BOT_TOKEN
+vercel env add TELEGRAM_SECRET_TOKEN
 ```
+
+`TELEGRAM_SECRET_TOKEN` is optional, but recommended. Use a long random string.
+
+3. Deploy the project:
+
+```bash
+vercel deploy --prod
+```
+
+4. Register the Telegram webhook:
+
+```bash
+curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://your-domain.vercel.app/api/telegram",
+    "secret_token": "your-telegram-secret-token"
+  }'
+```
+
+If you do not set `TELEGRAM_SECRET_TOKEN`, omit `secret_token` from the request.
+
+## Telegram Commands
+
+```text
+/start
+/help
+/prices
+/asset BTCUSDT
+```
+
+`/prices` returns all tracked prices and regimes. `/asset <symbol>` returns a detailed 4H indicator snapshot for one asset.
 
 ## API Usage
 
 ### Endpoint
-```
-GET https://hyperliquid-api-xxxxx.vercel.app/api/hyperliquid
+
+```text
+GET https://your-domain.vercel.app/api/hyperliquid
 ```
 
 ### Response
+
 ```json
 {
   "timestamp": "2026-06-20T15:30:45.123Z",
+  "interval": "4h",
+  "source": "hyperliquid",
   "prices": {
-    "BTC": "67234.50",
-    "HYPE": "12.45",
-    "ZEC": "89.12",
-    "XAUUSD": "2385.30",
-    "CLUSD": "72.15",
-    "AUDUSD": "0.6875",
-    "NVDA": "245.50",
-    "MU": "128.75",
-    "SPCX": "125.00",
-    "SNDK": "89.30",
-    "INTC": "32.45",
-    "MRVL": "56.80"
+    "BTCUSDT": 67234.5,
+    "HYPEUSDT": 12.45
   },
+  "assets": [
+    {
+      "symbol": "BTCUSDT",
+      "coin": "BTC",
+      "price": 67234.5,
+      "regime": "TRENDING_UP",
+      "candlesUsed": 200,
+      "indicators": {}
+    }
+  ],
   "status": "success"
 }
 ```
 
 ### Error Response
+
 ```json
 {
   "error": "Error message details",
@@ -73,64 +102,54 @@ GET https://hyperliquid-api-xxxxx.vercel.app/api/hyperliquid
 }
 ```
 
-## Testing
+## Local Development
 
 ```bash
-# In browser
-https://hyperliquid-api-xxxxx.vercel.app/api/hyperliquid
-
-# With curl
-curl https://hyperliquid-api-xxxxx.vercel.app/api/hyperliquid
-
-# With fetch
-fetch('https://hyperliquid-api-xxxxx.vercel.app/api/hyperliquid')
-  .then(r => r.json())
-  .then(data => console.log(data))
+npm install
+npm run dev
 ```
 
-## Configuration
+Then open:
 
-Edit `api/hyperliquid.js` to:
-- Add/remove coins from the `coins` array
-- Modify response format
-- Add logging/analytics
+```text
+http://localhost:3000/api/hyperliquid
+http://localhost:3000/api/telegram
+```
 
-Edit `vercel.json` to:
-- Change function memory (128 MB default)
-- Adjust timeout (10 seconds default)
-- Add environment variables
-
-## Data Source
-
-- **Exchange:** Hyperliquid
-- **Endpoint:** https://api.hyperliquid.xyz/info
-- **Update Frequency:** Real-time (call as needed)
-- **Rate Limit:** No auth required, fair-use policy applies
+Telegram webhook delivery requires a public HTTPS URL, so test full bot behavior after deploying to Vercel.
 
 ## Project Structure
 
-```
+```text
 hyperliquid-api/
 ├── api/
-│   └── hyperliquid.js       # Main serverless function
-├── vercel.json              # Vercel configuration
-├── .gitignore               # Git ignore rules
-└── README.md                # This file
+│   ├── hyperliquid.js       # JSON market-data endpoint
+│   └── telegram.js          # Telegram webhook endpoint
+├── lib/
+│   └── hyperliquid.js       # Shared Hyperliquid fetch + indicator logic
+├── public/
+│   └── index.html
+├── vercel.json
+└── README.md
 ```
+
+## Data Source
+
+- Exchange: Hyperliquid
+- Endpoint: `https://api.hyperliquid.xyz/info`
+- Update frequency: real-time on request
+- Rate limit: no authentication required, fair-use policy applies
 
 ## Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
-| 404 Not Found | Check file path is `api/hyperliquid.js` |
-| 500 Server Error | Check Vercel Logs for details |
-| Empty prices | Hyperliquid API might be rate-limited, retry in 30s |
-| Slow response | Increase function memory in `vercel.json` |
+| Bot does not reply | Confirm `TELEGRAM_BOT_TOKEN` is set in Vercel and redeploy. |
+| Webhook returns 401 | Check that Telegram `secret_token` matches `TELEGRAM_SECRET_TOKEN`. |
+| `/prices` is slow | Hyperliquid candle requests can take several seconds; check Vercel logs. |
+| Empty prices | Hyperliquid may be rate-limited or returning no candles; retry later. |
+| API 404 | Confirm the deployed URL uses `/api/hyperliquid` or `/api/telegram`. |
 
 ## License
 
 MIT - Free to use and modify
-
-## Support
-
-For issues, open a GitHub issue or check Vercel deployment logs.

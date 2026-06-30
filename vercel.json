@@ -4,6 +4,10 @@
     "api/hyperliquid.js": {
       "memory": 512,
       "maxDuration": 30
+    },
+    "api/telegram.js": {
+      "memory": 512,
+      "maxDuration": 30
     }
   }
 }

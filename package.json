@@ -1,7 +1,8 @@
 {
   "name": "hyperliquid-api",
   "version": "1.0.0",
-  "description": "Vercel serverless function that fetches real-time prices from Hyperliquid exchange",
+  "type": "module",
+  "description": "Vercel Telegram bot and API for Hyperliquid market data",
   "scripts": {
     "dev": "vercel dev",
     "deploy": "vercel deploy --prod"
@@ -10,6 +11,8 @@
     "hyperliquid",
     "trading",
     "api",
+    "telegram",
+    "bot",
     "vercel",
     "serverless",
     "cryptocurrency"
