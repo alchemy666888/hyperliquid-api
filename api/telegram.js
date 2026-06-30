@@ -6,7 +6,6 @@ import {
   saveDecisionTreeAlerts,
 } from '../lib/postgres.js';
 import {
-  formatDecisionTreeRuleSummary,
   normalizeAlertSymbol,
   parseDecisionTreeAlertText,
 } from '../lib/decision-tree-alerts.js';
@@ -52,6 +51,39 @@ function formatNumber(value) {
   if (abs >= 1000) return num.toLocaleString('en-US', { maximumFractionDigits: 2 });
   if (abs >= 1) return num.toLocaleString('en-US', { maximumFractionDigits: 4 });
   return num.toLocaleString('en-US', { maximumFractionDigits: 6 });
+}
+
+function htmlMessage(text) {
+  return { text, parseMode: 'HTML' };
+}
+
+function normalizeReply(reply) {
+  if (typeof reply === 'string') {
+    return { text: reply };
+  }
+
+  return {
+    text: String(reply?.text ?? ''),
+    parseMode: reply?.parseMode,
+  };
+}
+
+function escapeTelegramHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+}
+
+function formatAlertExpiry(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'n/a';
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hours = String(date.getUTCHours()).padStart(2, '0');
+  const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes} UTC`;
 }
 
 function formatRegime(regime) {
@@ -148,12 +180,23 @@ function postgresRequiredMessage() {
 
 function savedAlertsMessage(alerts) {
   const symbols = [...new Set(alerts.map(alert => alert.symbol))].join(', ');
-  return [
-    `Saved ${alerts.length} decision-tree alert${alerts.length === 1 ? '' : 's'} for ${symbols}.`,
+  const header = `Saved ${alerts.length} decision-tree alert${alerts.length === 1 ? '' : 's'} for ${symbols}.`;
+  return htmlMessage([
+    `<b>${escapeTelegramHtml(header)}</b>`,
     'Alerts fire every 10-minute market refresh when a condition moves from inactive to active.',
     'They expire after 24 hours unless manually cancelled with /clearalerts.',
     '',
-    ...alerts.map(alert => formatDecisionTreeRuleSummary(alert, { includeExpiration: true })),
+    ...alerts.map(formatRichDecisionTreeRule),
+  ].join('\n\n'));
+}
+
+function formatRichDecisionTreeRule(alert) {
+  const id = alert.id ? `#${alert.id}` : 'Alert';
+  return [
+    `<b>${escapeTelegramHtml(id)} ${escapeTelegramHtml(alert.symbol)}</b>`,
+    `Condition: <code>${escapeTelegramHtml(alert.conditionText)}</code>`,
+    `Action: ${escapeTelegramHtml(alert.actionText)}`,
+    `Expires: <code>${escapeTelegramHtml(formatAlertExpiry(alert.expiresAt))}</code>`,
   ].join('\n');
 }
 
@@ -162,11 +205,12 @@ function listAlertsMessage(alerts) {
     return 'No active decision-tree alerts for this chat.';
   }
 
-  return [
-    'Active decision-tree alerts (expire after 24 hours unless cancelled):',
+  return htmlMessage([
+    '<b>Active decision-tree alerts</b>',
+    '<i>Expire after 24 hours unless cancelled with /clearalerts.</i>',
     '',
-    ...alerts.map(alert => formatDecisionTreeRuleSummary(alert, { includeExpiration: true })),
-  ].join('\n');
+    ...alerts.map(formatRichDecisionTreeRule),
+  ].join('\n\n'));
 }
 
 async function setupTreeAlerts(body, chatId) {
@@ -310,8 +354,8 @@ export default async function handler(req, res) {
       return;
     }
 
-    const reply = await buildReply(text, chatId);
-    await sendTelegramMessage(token, chatId, reply);
+    const reply = normalizeReply(await buildReply(text, chatId));
+    await sendTelegramMessage(token, chatId, reply.text, { parseMode: reply.parseMode });
     res.status(200).json({ status: 'sent' });
   } catch (error) {
     console.error('telegram handler error:', error);
