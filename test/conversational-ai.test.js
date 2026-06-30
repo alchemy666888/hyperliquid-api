@@ -34,12 +34,13 @@ test('answerStatelessAiChat sends only current request and market context to AI'
 
   assert.equal(reply.parseMode, 'HTML');
   assert.match(reply.text, /BTC is firm/);
-  assert.match(reply.text, /BTCUSDT 61,000/);
-  assert.match(reply.text, /Informational only/);
+  assert.doesNotMatch(reply.text, /BTCUSDT 61,000/);
+  assert.doesNotMatch(reply.text, /Informational only/);
 
   assert.equal(messages.length, 2);
   assert.match(messages[0].content, /stateless/);
   assert.match(messages[0].content, /Do not refer to or infer previous conversation history/);
+  assert.match(messages[0].content, /plain text without Markdown formatting/);
 
   const userPayload = JSON.parse(messages[1].content);
   assert.equal(userPayload.currentRequest, 'What is BTC doing now?');
