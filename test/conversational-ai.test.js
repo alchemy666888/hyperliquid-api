@@ -39,13 +39,40 @@ test('answerStatelessAiChat sends only current request and market context to AI'
 
   assert.equal(messages.length, 2);
   assert.match(messages[0].content, /stateless/);
+  assert.match(messages[0].content, /daily-life topics/);
+  assert.match(messages[0].content, /Use the market context only when the request is about markets/);
   assert.match(messages[0].content, /Do not refer to or infer previous conversation history/);
 
   const userPayload = JSON.parse(messages[1].content);
   assert.equal(userPayload.currentRequest, 'What is BTC doing now?');
+  assert.equal(userPayload.marketRelatedRequest, true);
   assert.equal(userPayload.marketContext.assets[0].symbol, 'BTCUSDT');
   assert.equal(Object.hasOwn(userPayload, 'history'), false);
   assert.equal(Object.hasOwn(userPayload, 'previousMessages'), false);
+});
+
+test('answerStatelessAiChat supports daily-life chat without market footer', async () => {
+  let messages;
+  const reply = await answerStatelessAiChat({
+    message: 'What should I cook for dinner tonight?',
+    getSnapshot: async () => snapshot,
+    deepSeekChat: async request => {
+      messages = request.messages;
+      return { ok: true, text: 'Try a quick veggie stir-fry with rice.' };
+    },
+  });
+
+  assert.equal(reply.parseMode, 'HTML');
+  assert.match(reply.text, /veggie stir-fry/);
+  assert.doesNotMatch(reply.text, /Market context:/);
+  assert.doesNotMatch(reply.text, /Informational only/);
+
+  assert.match(messages[0].content, /daily-life topics/);
+  const userPayload = JSON.parse(messages[1].content);
+  assert.equal(userPayload.currentRequest, 'What should I cook for dinner tonight?');
+  assert.equal(userPayload.marketRelatedRequest, false);
+  assert.equal(userPayload.marketContext.assets[0].symbol, 'BTCUSDT');
+  assert.equal(Object.hasOwn(userPayload, 'history'), false);
 });
 
 test('answerStatelessAiChat returns setup guidance when AI is unavailable', async () => {
