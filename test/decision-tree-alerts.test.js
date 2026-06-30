@@ -61,10 +61,9 @@ test('formats triggered alert message', () => {
   const message = formatDecisionTreeAlertHit(rules[0], 1198);
 
   assert.equal(message.parseMode, 'HTML');
-  assert.match(message.text, /^<pre>\+/);
-  assert.match(message.text, /Decision-tree alert hit/);
-  assert.match(message.text, /Price\s+\|\s+\$1,198/);
-  assert.match(message.text, /Condition\s+\|\s+MU above \$1,164 and holds\?/);
+  assert.match(message.text, /<b>Decision-tree alert hit<\/b>/);
+  assert.match(message.text, /<b>Price<\/b>\n\$1,198/);
+  assert.match(message.text, /<b>Condition<\/b>\nMU above \$1,164 and holds\?/);
 });
 
 test('formats alert summaries with optional expiration metadata', () => {
