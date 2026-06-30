@@ -14,6 +14,17 @@ test('buildReply routes plain text to stateless AI chat', async () => {
   assert.equal(reply.text, 'BTC answer');
 });
 
+test('buildReply routes daily-life text to stateless AI chat', async () => {
+  const reply = await buildReply('What should I cook tonight?', 123, {
+    answerStatelessAiChat: async ({ message }) => {
+      assert.equal(message, 'What should I cook tonight?');
+      return { text: 'Dinner answer' };
+    },
+  });
+
+  assert.equal(reply.text, 'Dinner answer');
+});
+
 test('buildReply keeps unknown slash commands on the help path', async () => {
   const reply = await buildReply('/unknown please chat', 123, {
     answerStatelessAiChat: async () => {
