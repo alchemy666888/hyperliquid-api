@@ -20,7 +20,7 @@ A Vercel serverless project that exposes Hyperliquid market data through both:
 ## Telegram Bot Setup
 
 1. Create a bot with [BotFather](https://t.me/BotFather) and copy the bot token.
-2. Add Vercel environment variables:
+2. Add Vercel environment variables (CLI or Dashboard):
 
 ```bash
 vercel env add TELEGRAM_BOT_TOKEN
@@ -29,13 +29,25 @@ vercel env add TELEGRAM_SECRET_TOKEN
 
 `TELEGRAM_SECRET_TOKEN` is optional, but recommended. Use a long random string.
 
-3. Deploy the project:
+Dashboard path: `Project -> Settings -> Environment Variables`.
+
+3. Deploy or redeploy the project so Vercel Functions load the latest values:
 
 ```bash
 vercel deploy --prod
 ```
 
-4. Register the Telegram webhook:
+4. Verify env loading (no secrets are exposed):
+
+```text
+GET https://your-domain.vercel.app/api/telegram
+```
+
+Expected response includes:
+- `config.botTokenConfigured: true`
+- `config.secretTokenConfigured: true` (if you set secret token)
+
+5. Register the Telegram webhook:
 
 ```bash
 curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
@@ -47,6 +59,7 @@ curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
 ```
 
 If you do not set `TELEGRAM_SECRET_TOKEN`, omit `secret_token` from the request.
+When `TELEGRAM_SECRET_TOKEN` is set, `/api/telegram` validates `x-telegram-bot-api-secret-token` for every webhook call.
 
 ## Telegram Commands
 
@@ -144,7 +157,7 @@ hyperliquid-api/
 
 | Issue | Solution |
 |-------|----------|
-| Bot does not reply | Confirm `TELEGRAM_BOT_TOKEN` is set in Vercel and redeploy. |
+| Bot does not reply | Confirm `/api/telegram` shows `botTokenConfigured: true`, then redeploy. |
 | Webhook returns 401 | Check that Telegram `secret_token` matches `TELEGRAM_SECRET_TOKEN`. |
 | `/prices` is slow | Hyperliquid candle requests can take several seconds; check Vercel logs. |
 | Empty prices | Hyperliquid may be rate-limited or returning no candles; retry later. |

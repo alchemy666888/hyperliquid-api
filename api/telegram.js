@@ -1,4 +1,5 @@
 import { ASSETS, getHyperliquidSnapshot } from '../lib/hyperliquid.js';
+import { timingSafeEqual } from 'node:crypto';
 
 const TELEGRAM_API_BASE = 'https://api.telegram.org';
 
@@ -12,6 +13,19 @@ function parseUpdateBody(req) {
     return JSON.parse(req.body);
   }
   return req.body ?? {};
+}
+
+function readEnv(name) {
+  const value = process.env[name];
+  if (typeof value !== 'string') return '';
+  return value.trim();
+}
+
+function safeEqual(a, b) {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
 }
 
 function parseCommand(text) {
@@ -140,10 +154,18 @@ async function buildReply(text) {
 }
 
 export default async function handler(req, res) {
+  const token = readEnv('TELEGRAM_BOT_TOKEN');
+  const expectedSecret = readEnv('TELEGRAM_SECRET_TOKEN');
+
   if (req.method === 'GET') {
     res.status(200).json({
       status: 'ok',
       service: 'telegram-webhook',
+      vercelEnv: process.env.VERCEL_ENV ?? 'unknown',
+      config: {
+        botTokenConfigured: Boolean(token),
+        secretTokenConfigured: Boolean(expectedSecret),
+      },
     });
     return;
   }
@@ -154,19 +176,17 @@ export default async function handler(req, res) {
     return;
   }
 
-  const expectedSecret = process.env.TELEGRAM_SECRET_TOKEN;
   if (expectedSecret) {
     const providedSecret = getHeader(req, 'x-telegram-bot-api-secret-token');
-    if (providedSecret !== expectedSecret) {
-      res.status(401).json({ error: 'Unauthorized' });
+    if (!providedSecret || !safeEqual(String(providedSecret), expectedSecret)) {
+      res.status(401).json({ error: 'Unauthorized: invalid webhook secret token' });
       return;
     }
   }
 
-  const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
-    console.error('Missing TELEGRAM_BOT_TOKEN');
-    res.status(500).json({ error: 'Missing TELEGRAM_BOT_TOKEN' });
+    console.error('Missing TELEGRAM_BOT_TOKEN in environment');
+    res.status(500).json({ error: 'Missing TELEGRAM_BOT_TOKEN in environment' });
     return;
   }
 
