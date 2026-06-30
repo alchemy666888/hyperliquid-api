@@ -11,9 +11,8 @@ import {
 } from '../lib/decision-tree-alerts.js';
 import { sendTelegramMessage } from '../lib/telegram-client.js';
 import {
-  escapeTelegramHtml,
   formatTelegramDate,
-  htmlMessage,
+  telegramTableMessage,
 } from '../lib/telegram-format.js';
 import { timingSafeEqual } from 'node:crypto';
 
@@ -60,7 +59,9 @@ function formatNumber(value) {
 
 function normalizeReply(reply) {
   if (typeof reply === 'string') {
-    return htmlMessage(escapeTelegramHtml(reply));
+    return telegramTableMessage('Hyperliquid Market Bot', [
+      ['Message', reply],
+    ]);
   }
 
   return {
@@ -88,115 +89,103 @@ function findAsset(snapshot, input) {
 }
 
 function helpMessage() {
-  return htmlMessage([
-    '<b>Hyperliquid Market Bot</b>',
-    '',
-    '<b>Commands</b>',
-    '<code>/prices</code> - show all tracked prices and regimes',
-    '<code>/asset BTCUSDT</code> - show 4H indicators for one asset',
-    '<code>/treealert</code> - save pasted decision-tree alerts',
-    '<code>/alerts</code> - list active decision-tree alerts',
-    '<code>/clearalerts [MU]</code> - manually cancel active decision-tree alerts',
-    '<code>/help</code> - show this help',
-    '',
-    '<b>Decision-tree setup</b>',
-    '<code>/treealert</code>',
-    '<code>MU above $1,164 and holds?</code>',
-    '<code>-&gt; Long toward $1,198</code>',
-    '',
-    '<i>Alerts expire after 24 hours unless manually cancelled with /clearalerts.</i>',
-    '',
-    `<b>Tracked assets:</b> ${escapeTelegramHtml(ASSETS.map(asset => asset.label).join(', '))}`,
-  ].join('\n'));
+  return telegramTableMessage('Hyperliquid Market Bot', [
+    ['/prices', 'Show all tracked prices and regimes'],
+    ['/asset BTCUSDT', 'Show 4H indicators for one asset'],
+    ['/treealert', 'Save pasted decision-tree alerts'],
+    ['/alerts', 'List active decision-tree alerts'],
+    ['/clearalerts [MU]', 'Manually cancel active decision-tree alerts'],
+    ['/help', 'Show this help'],
+    { separator: true },
+    ['Setup', '/treealert | MU above $1,164 and holds? | -> Long toward $1,198'],
+    ['Expiry', 'Alerts expire after 24 hours unless manually cancelled with /clearalerts.'],
+    ['Assets', ASSETS.map(asset => asset.label).join(', ')],
+  ]);
 }
 
 function pricesMessage(snapshot) {
   const lines = snapshot.assets.map(asset =>
-    `<code>${escapeTelegramHtml(asset.symbol)}</code> ${escapeTelegramHtml(formatNumber(asset.price))} - ${escapeTelegramHtml(formatRegime(asset.regime))}`
+    [asset.symbol, `${formatNumber(asset.price)} - ${formatRegime(asset.regime)}`]
   );
 
-  return htmlMessage([
-    `<b>Hyperliquid prices (${escapeTelegramHtml(snapshot.interval)})</b>`,
-    `<i>Updated: ${escapeTelegramHtml(formatTelegramDate(snapshot.timestamp))}</i>`,
-    '',
+  return telegramTableMessage(`Hyperliquid prices (${snapshot.interval})`, [
+    ['Updated', formatTelegramDate(snapshot.timestamp)],
+    { separator: true },
     ...lines,
-  ].join('\n'));
+  ]);
 }
 
 function assetMessage(asset, snapshot) {
   const indicators = asset.indicators ?? {};
   const macd = indicators.macd ?? {};
 
-  return htmlMessage([
-    `<b>${escapeTelegramHtml(asset.symbol)} (${escapeTelegramHtml(snapshot.interval)})</b>`,
-    `<i>Updated: ${escapeTelegramHtml(formatTelegramDate(snapshot.timestamp))}</i>`,
-    '',
-    `<b>Price:</b> ${escapeTelegramHtml(formatNumber(asset.price))}`,
-    `<b>Regime:</b> ${escapeTelegramHtml(formatRegime(asset.regime))}`,
-    `<b>RSI 14:</b> ${escapeTelegramHtml(formatNumber(indicators.rsi14))}`,
-    `<b>ADX 14:</b> ${escapeTelegramHtml(formatNumber(indicators.adx14))}`,
-    `<b>EMA 20 / 50:</b> ${escapeTelegramHtml(formatNumber(indicators.ema20))} / ${escapeTelegramHtml(formatNumber(indicators.ema50))}`,
-    `<b>MACD hist:</b> ${escapeTelegramHtml(formatNumber(macd.histogram))} (${escapeTelegramHtml(macd.histogramDirection ?? 'n/a')})`,
-    `<b>ATR 14:</b> ${escapeTelegramHtml(formatNumber(indicators.atr14))}`,
-    `<b>Volume spike:</b> ${escapeTelegramHtml(formatNumber(indicators.volumeSpikeRatio))}x`,
-    `<b>Candles used:</b> ${escapeTelegramHtml(asset.candlesUsed ?? 0)}`,
-  ].join('\n'));
+  return telegramTableMessage(`${asset.symbol} (${snapshot.interval})`, [
+    ['Updated', formatTelegramDate(snapshot.timestamp)],
+    ['Price', formatNumber(asset.price)],
+    ['Regime', formatRegime(asset.regime)],
+    ['RSI 14', formatNumber(indicators.rsi14)],
+    ['ADX 14', formatNumber(indicators.adx14)],
+    ['EMA 20 / 50', `${formatNumber(indicators.ema20)} / ${formatNumber(indicators.ema50)}`],
+    ['MACD hist', `${formatNumber(macd.histogram)} (${macd.histogramDirection ?? 'n/a'})`],
+    ['ATR 14', formatNumber(indicators.atr14)],
+    ['Volume spike', `${formatNumber(indicators.volumeSpikeRatio)}x`],
+    ['Candles used', asset.candlesUsed ?? 0],
+  ]);
 }
 
 function treeAlertUsage() {
-  return htmlMessage([
-    '<b>Usage</b>',
-    '<code>/treealert</code>',
-    '<code>MU above $1,164 and holds?</code>',
-    '<code>-&gt; Long toward $1,198</code>',
-    '',
-    '<b>Supported conditions:</b> above, below/closes below, between, holds/rejects with a price range.',
-    '<i>Alerts expire after 24 hours or when cancelled with /clearalerts.</i>',
-  ].join('\n'));
+  return telegramTableMessage('Decision-tree alert usage', [
+    ['Command', '/treealert'],
+    ['Condition', 'MU above $1,164 and holds?'],
+    ['Action', '-> Long toward $1,198'],
+    ['Supported', 'above, below/closes below, between, holds/rejects with a price range'],
+    ['Expiry', 'Alerts expire after 24 hours or when cancelled with /clearalerts.'],
+  ]);
 }
 
 function postgresRequiredMessage() {
   const status = getPostgresStatus();
-  const missing = status.missing?.length ? ` Missing: ${status.missing.join(', ')}` : '';
-  return htmlMessage([
-    '<b>Decision-tree alerts require PostgreSQL persistence.</b>',
-    missing ? escapeTelegramHtml(missing.trim()) : '',
-  ].filter(Boolean).join('\n'));
+  const rows = [
+    ['Status', 'Decision-tree alerts require PostgreSQL persistence.'],
+  ];
+  if (status.missing?.length) {
+    rows.push(['Missing', status.missing.join(', ')]);
+  }
+  return telegramTableMessage('PostgreSQL required', rows);
 }
 
 function savedAlertsMessage(alerts) {
   const symbols = [...new Set(alerts.map(alert => alert.symbol))].join(', ');
   const header = `Saved ${alerts.length} decision-tree alert${alerts.length === 1 ? '' : 's'} for ${symbols}.`;
-  return htmlMessage([
-    `<b>${escapeTelegramHtml(header)}</b>`,
-    'Alerts fire every 10-minute market refresh when a condition moves from inactive to active.',
-    'They expire after 24 hours unless manually cancelled with /clearalerts.',
-    '',
+  return telegramTableMessage(header, [
+    ['Refresh', 'Every 10 minutes'],
+    ['Trigger', 'Condition moves from inactive to active'],
+    ['Expiry', '24 hours unless manually cancelled with /clearalerts'],
+    { separator: true },
     ...alerts.map(formatRichDecisionTreeRule),
-  ].join('\n\n'));
+  ]);
 }
 
 function formatRichDecisionTreeRule(alert) {
   const id = alert.id ? `#${alert.id}` : 'Alert';
   return [
-    `<b>${escapeTelegramHtml(id)} ${escapeTelegramHtml(alert.symbol)}</b>`,
-    `Condition: <code>${escapeTelegramHtml(alert.conditionText)}</code>`,
-    `Action: ${escapeTelegramHtml(alert.actionText)}`,
-    `Expires: <code>${escapeTelegramHtml(formatTelegramDate(alert.expiresAt))}</code>`,
-  ].join('\n');
+    `${id} ${alert.symbol}`,
+    `${alert.conditionText} -> ${alert.actionText} | expires ${formatTelegramDate(alert.expiresAt)}`,
+  ];
 }
 
 function listAlertsMessage(alerts) {
   if (!alerts?.length) {
-    return htmlMessage('<b>No active decision-tree alerts for this chat.</b>');
+    return telegramTableMessage('Active decision-tree alerts', [
+      ['Status', 'No active decision-tree alerts for this chat.'],
+    ]);
   }
 
-  return htmlMessage([
-    '<b>Active decision-tree alerts</b>',
-    '<i>Expire after 24 hours unless cancelled with /clearalerts.</i>',
-    '',
+  return telegramTableMessage('Active decision-tree alerts', [
+    ['Expiry', '24 hours unless cancelled with /clearalerts'],
+    { separator: true },
     ...alerts.map(formatRichDecisionTreeRule),
-  ].join('\n\n'));
+  ]);
 }
 
 async function setupTreeAlerts(body, chatId) {
@@ -205,12 +194,11 @@ async function setupTreeAlerts(body, chatId) {
 
   const parsed = parseDecisionTreeAlertText(body, { assets: ASSETS });
   if (parsed.errors.length) {
-    return htmlMessage([
-      '<b>Could not save decision-tree alerts</b>',
-      ...parsed.errors.map(error => `- ${escapeTelegramHtml(error)}`),
-      '',
-      treeAlertUsage().text,
-    ].join('\n'));
+    return telegramTableMessage('Could not save decision-tree alerts', [
+      ...parsed.errors.map((error, index) => [`Error ${index + 1}`, error]),
+      { separator: true },
+      ['Usage', '/treealert | MU above $1,164 and holds? | -> Long toward $1,198'],
+    ]);
   }
 
   if (!parsed.rules.length) return treeAlertUsage();
@@ -247,10 +235,9 @@ async function clearTreeAlerts(chatId, symbolInput) {
   const cleared = await clearDecisionTreeAlerts(chatId, symbol);
   if (cleared == null) return postgresRequiredMessage();
   const scope = symbol ? ` for ${symbol}` : '';
-  return htmlMessage([
-    '<b>Decision-tree alerts cancelled</b>',
-    escapeTelegramHtml(`Cleared ${cleared} active decision-tree alert${cleared === 1 ? '' : 's'}${scope}.`),
-  ].join('\n'));
+  return telegramTableMessage('Decision-tree alerts cancelled', [
+    ['Cleared', `${cleared} active decision-tree alert${cleared === 1 ? '' : 's'}${scope}`],
+  ]);
 }
 
 async function buildReply(text, chatId) {
@@ -267,16 +254,18 @@ async function buildReply(text, chatId) {
 
   if (command === '/asset') {
     if (!args.length) {
-      return 'Usage: /asset BTCUSDT';
+      return telegramTableMessage('Asset command usage', [
+        ['Usage', '/asset BTCUSDT'],
+      ]);
     }
 
     const snapshot = await getHyperliquidSnapshot();
     const asset = findAsset(snapshot, args[0]);
     if (!asset) {
-      return htmlMessage([
-        `<b>Unknown asset:</b> <code>${escapeTelegramHtml(args[0])}</code>`,
-        `<b>Tracked assets:</b> ${escapeTelegramHtml(ASSETS.map(item => item.label).join(', '))}`,
-      ].join('\n'));
+      return telegramTableMessage('Unknown asset', [
+        ['Input', args[0]],
+        ['Tracked', ASSETS.map(item => item.label).join(', ')],
+      ]);
     }
 
     return assetMessage(asset, snapshot);
