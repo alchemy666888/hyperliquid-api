@@ -14,7 +14,6 @@ const ASSETS = [
   { label: 'ZECUSDT',  coin: 'ZEC',         dex: '' },
   { label: 'XAUUSD',   coin: 'xyz:GOLD',    dex: 'xyz' },
   { label: 'CLUSD',    coin: 'xyz:CL',      dex: 'xyz' },
-  { label: 'AUDUSD',   coin: 'xyz:AUD',      dex: 'xyz' },
   { label: 'EURUSD',   coin: 'xyz:EUR',      dex: 'xyz' },
   { label: 'NVDA',     coin: 'xyz:NVDA',    dex: 'xyz' },
   { label: 'MU',       coin: 'xyz:MU',      dex: 'xyz' },
