@@ -111,17 +111,15 @@ test('/condition BTC evaluates only the requested asset', async () => {
   assert.match(reply.text, /<b>Decision-tree condition: BTC<\/b>/);
   assert.match(reply.text, /BTC above trigger\?/);
   assert.doesNotMatch(reply.text, /ETH/);
-  assert.doesNotMatch(reply.text, /No active decision tree/);
 });
 
-test('/condition without a symbol returns only configured assets with alerts', async () => {
+test('/condition without a symbol returns all configured assets', async () => {
   const evaluated = [];
   const reply = await buildReply('/condition', 123, {
     getHyperliquidSnapshot: async () => multiAssetSnapshot,
-    listDecisionTreeAlerts: async () => [
-      { ...alert, id: 31, symbol: 'BTC', conditionText: 'BTC above trigger?', actionText: 'BTC plan.' },
+    getDecisionTreeAlertsForSymbol: async (_chatId, symbol) => [
+      { ...alert, id: symbol === 'BTC' ? 31 : 32, symbol, conditionText: `${symbol} above trigger?`, actionText: `${symbol} plan.` },
     ],
-    getDecisionTreeAlertsForSymbol: async () => { throw new Error('should use listed alerts'); },
     classifyAssetDecisionTreeCondition: async ({ asset, activeRules }) => {
       evaluated.push(asset.symbol);
       return {
@@ -137,31 +135,17 @@ test('/condition without a symbol returns only configured assets with alerts', a
     },
   });
 
-  assert.deepEqual(evaluated, ['BTC']);
+  assert.deepEqual(evaluated, ['ETH', 'BTC']);
   assert.match(reply.text, /<b>Decision-tree conditions<\/b>/);
   assert.match(reply.text, /BTC above trigger\?/);
-  assert.doesNotMatch(reply.text, /ETH/);
-  assert.doesNotMatch(reply.text, /No active decision tree/);
-});
-
-test('/condition without a symbol skips market data when there are no alerts', async () => {
-  const reply = await buildReply('/condition', 123, {
-    listDecisionTreeAlerts: async () => [],
-    getHyperliquidSnapshot: async () => { throw new Error('should not fetch market data without alerts'); },
-    getDecisionTreeAlertsForSymbol: async () => { throw new Error('should not query per-symbol alerts'); },
-    classifyAssetDecisionTreeCondition: async () => { throw new Error('should not classify without alerts'); },
-  });
-
-  assert.match(reply.text, /<b>Decision-tree conditions<\/b>/);
-  assert.match(reply.text, /No active decision-tree alerts for this chat\./);
+  assert.match(reply.text, /ETH above trigger\?/);
+  assert.ok(reply.text.indexOf('BTC') < reply.text.indexOf('ETH'));
 });
 
 test('/condition without a symbol handles an empty asset universe', async () => {
   const reply = await buildReply('/condition', 123, {
-    listDecisionTreeAlerts: async () => [alert],
     getHyperliquidSnapshot: async () => ({ interval: '4h', timestamp: '2026-06-30T00:00:00.000Z', assets: [] }),
-    getDecisionTreeAlertsForSymbol: async () => { throw new Error('should not query per-symbol alerts'); },
-    classifyAssetDecisionTreeCondition: async () => { throw new Error('should not classify without assets'); },
+    getDecisionTreeAlertsForSymbol: async () => { throw new Error('should not query alerts'); },
   });
 
   assert.match(reply.text, /<b>Decision-tree conditions<\/b>/);
