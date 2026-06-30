@@ -58,6 +58,7 @@ test('requestAiChat sends Claude Messages API shape without DeepSeek response_fo
       { role: 'user', content: 'Hello Claude.' },
     ],
     temperature: 0.9,
+    searchEnable: true,
     fetchImpl: async (url, options) => {
       requestUrl = url;
       requestHeaders = options.headers;
@@ -82,6 +83,7 @@ test('requestAiChat sends Claude Messages API shape without DeepSeek response_fo
   assert.equal(requestBody.system, 'System instructions.');
   assert.deepEqual(requestBody.messages, [{ role: 'user', content: 'Hello Claude.' }]);
   assert.equal(requestBody.response_format, undefined);
+  assert.equal(requestBody.search_enable, undefined);
   assert.equal(requestBody.temperature, undefined);
   clearAiEnv();
 });

@@ -22,12 +22,12 @@ const snapshot = {
 };
 
 test('answerStatelessAiChat sends only current request and market context to AI', async () => {
-  let messages;
+  let aiRequest;
   const reply = await answerStatelessAiChat({
     message: 'What is BTC doing now?',
     getSnapshot: async () => snapshot,
     deepSeekChat: async request => {
-      messages = request.messages;
+      aiRequest = request;
       return { ok: true, text: 'BTC is firm on the current snapshot.' };
     },
   });
@@ -37,6 +37,8 @@ test('answerStatelessAiChat sends only current request and market context to AI'
   assert.match(reply.text, /BTCUSDT 61,000/);
   assert.match(reply.text, /Informational only/);
 
+  assert.equal(aiRequest.searchEnable, true);
+  const messages = aiRequest.messages;
   assert.equal(messages.length, 2);
   assert.match(messages[0].content, /stateless/);
   assert.match(messages[0].content, /daily-life topics/);
@@ -53,12 +55,12 @@ test('answerStatelessAiChat sends only current request and market context to AI'
 });
 
 test('answerStatelessAiChat supports daily-life chat without market footer', async () => {
-  let messages;
+  let aiRequest;
   const reply = await answerStatelessAiChat({
     message: 'What should I cook for dinner tonight?',
     getSnapshot: async () => snapshot,
     deepSeekChat: async request => {
-      messages = request.messages;
+      aiRequest = request;
       return { ok: true, text: 'Try a quick veggie stir-fry with rice.' };
     },
   });
@@ -68,6 +70,8 @@ test('answerStatelessAiChat supports daily-life chat without market footer', asy
   assert.doesNotMatch(reply.text, /Market context:/);
   assert.doesNotMatch(reply.text, /Informational only/);
 
+  assert.equal(aiRequest.searchEnable, true);
+  const messages = aiRequest.messages;
   assert.match(messages[0].content, /daily-life topics/);
   assert.match(messages[0].content, /Telegram-compatible HTML, not Markdown/);
   const userPayload = JSON.parse(messages[1].content);
