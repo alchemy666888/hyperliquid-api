@@ -12,6 +12,7 @@ test('buildReply routes plain text to stateless AI chat', async () => {
   });
 
   assert.equal(reply.text, 'BTC answer');
+  assert.equal(reply.parseMode, undefined);
 });
 
 test('buildReply keeps unknown slash commands on the help path', async () => {
@@ -41,6 +42,7 @@ test('processTelegramText persists inbound and outbound chat messages through in
   });
 
   assert.equal(reply.text, 'MU answer');
+  assert.equal(reply.parseMode, undefined);
   assert.equal(saved.length, 2);
   assert.deepEqual(saved[0], {
     chatId: 456,

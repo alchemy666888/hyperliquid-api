@@ -110,7 +110,7 @@ function findAsset(snapshot, input) {
 
 function helpMessage() {
   return telegramTableMessage('Hyperliquid Market Bot', [
-    ['Chat', 'Send a normal message to ask AI about the current market. No command needed.'],
+    ['Chat', 'Send a normal message to ask AI. Use /prices or /asset for live market context.'],
     ['/prices', 'Show all tracked prices and regimes'],
     ['/asset BTCUSDT', 'Show 4H indicators for one asset'],
     ['/treealert', 'Save pasted decision-tree alerts'],
@@ -122,7 +122,7 @@ function helpMessage() {
     ['Setup', '/treealert | MU above $1,164 and holds? | -> Long toward $1,198'],
     ['Check', '/condition MU'],
     ['Expiry', 'Alerts expire after 24 hours unless manually cancelled with /clearalerts.'],
-    ['AI memory', 'Chat history is saved when PostgreSQL is configured, but AI replies only use your current request.'],
+    ['AI memory', 'Chat history is saved when PostgreSQL is configured, but AI replies only use your current request and no market context.'],
     ['Assets', ASSETS.map(asset => asset.label).join(', ')],
   ]);
 }
@@ -433,7 +433,6 @@ export async function buildReply(text, chatId, deps = {}) {
   if (!isSlashCommand(text)) {
     return (deps.answerStatelessAiChat ?? answerStatelessAiChat)({
       message: text,
-      getSnapshot: deps.getHyperliquidSnapshot,
       deepSeekChat: deps.deepSeekChat,
     });
   }

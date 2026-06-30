@@ -65,7 +65,7 @@ When `TELEGRAM_SECRET_TOKEN` is set, `/api/telegram` validates `x-telegram-bot-a
 
 ## DeepSeek AI Setup
 
-The bot uses DeepSeek for `/condition <symbol>` classification and for normal no-command AI chat. No-command chat is stateless: each reply only uses the current user message plus fresh Hyperliquid market context, even though the raw communication history is persisted when PostgreSQL is configured.
+The bot uses DeepSeek for `/condition <symbol>` classification and for normal no-command AI chat. No-command chat is stateless: each reply only uses the current user message, without previous chat history or market context, even though the raw communication history is persisted when PostgreSQL is configured.
 
 Required variable:
 
@@ -159,10 +159,10 @@ Expected response includes `config.postgres.configured: true` after all database
 You can talk to the bot normally without a slash command, for example:
 
 ```text
-What is happening with BTC right now?
+Can you explain what RSI means?
 ```
 
-The AI reply uses only that current request and a fresh market snapshot. Previous communication history is saved to PostgreSQL when configured, but it is not considered as chat memory.
+The AI reply uses only that current request, is sent as plain Telegram text without Markdown/HTML parse mode, and does not include live market context. Previous communication history is saved to PostgreSQL when configured, but it is not considered as chat memory. Use `/prices`, `/asset <symbol>`, or `/condition <symbol>` when you want current market data.
 
 ```text
 /start
