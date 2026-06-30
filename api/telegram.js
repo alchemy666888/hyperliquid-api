@@ -2,13 +2,15 @@ import { ASSETS, getHyperliquidSnapshot } from '../lib/hyperliquid.js';
 import {
   clearDecisionTreeAlerts,
   getPostgresStatus,
+  getDecisionTreeAlertsForSymbol,
   listDecisionTreeAlerts,
   saveDecisionTreeAlerts,
 } from '../lib/postgres.js';
 import {
   normalizeAlertSymbol,
-  parseDecisionTreeAlertText,
+  parseDecisionTreeAlertTextWithAi,
 } from '../lib/decision-tree-alerts.js';
+import { classifyAssetDecisionTreeCondition } from '../lib/ai-decision-tree-alerts.js';
 import { sendTelegramMessage } from '../lib/telegram-client.js';
 import {
   formatTelegramDate,
@@ -101,12 +103,13 @@ function helpMessage() {
     ['/prices', 'Show all tracked prices and regimes'],
     ['/asset BTCUSDT', 'Show 4H indicators for one asset'],
     ['/treealert', 'Save pasted decision-tree alerts'],
-    ['/condition MU', 'Classify current asset state against saved decision tree using DeepSeek'],
+    ['/condition MU', 'Classify current saved tree condition'],
     ['/alerts', 'List active decision-tree alerts'],
     ['/clearalerts [MU]', 'Manually cancel active decision-tree alerts'],
     ['/help', 'Show this help'],
     { separator: true },
     ['Setup', '/treealert | MU above $1,164 and holds? | -> Long toward $1,198'],
+    ['Check', '/condition MU'],
     ['Expiry', 'Alerts expire after 24 hours unless manually cancelled with /clearalerts.'],
     ['Assets', ASSETS.map(asset => asset.label).join(', ')],
   ]);
@@ -201,10 +204,12 @@ async function setupTreeAlerts(body, chatId) {
   if (!body) return treeAlertUsage();
   if (!getPostgresStatus().configured) return postgresRequiredMessage();
 
-  const parsed = parseDecisionTreeAlertText(body, { assets: ASSETS });
-  if (parsed.errors.length) {
+  const parsed = await parseDecisionTreeAlertTextWithAi(body, { assets: ASSETS });
+  if (parsed.errors.length && !parsed.rules.length) {
+    const rows = parsed.errors.map((error, index) => [`Error ${index + 1}`, error]);
+    if (parsed.aiMessage) rows.push([parsed.aiUnavailable ? 'AI unavailable' : 'AI parser', parsed.aiMessage]);
     return telegramTableMessage('Could not save decision-tree alerts', [
-      ...parsed.errors.map((error, index) => [`Error ${index + 1}`, error]),
+      ...rows,
       { separator: true },
       ['Usage', '/treealert | MU above $1,164 and holds? | -> Long toward $1,198'],
     ]);
@@ -219,7 +224,14 @@ async function setupTreeAlerts(body, chatId) {
   });
 
   if (!alerts) return postgresRequiredMessage();
-  return savedAlertsMessage(alerts);
+  const message = savedAlertsMessage(alerts);
+  if (parsed.aiMessage || parsed.source === 'ai') {
+    const note = parsed.source === 'ai'
+      ? 'Parsed with AI after deterministic parsing needed help.'
+      : parsed.aiMessage;
+    return { ...message, text: `${message.text}\n\n<i>${note}</i>` };
+  }
+  return message;
 }
 
 async function listTreeAlerts(chatId) {
@@ -249,7 +261,55 @@ async function clearTreeAlerts(chatId, symbolInput) {
   ]);
 }
 
-async function buildReply(text, chatId) {
+async function conditionMessage({ chatId, symbolInput, deps = {} }) {
+  if (!symbolInput) {
+    return telegramTableMessage('Decision-tree condition usage', [
+      ['Usage', '/condition MU'],
+    ]);
+  }
+
+  if (!getPostgresStatus().configured) return postgresRequiredMessage();
+
+  const snapshot = await (deps.getHyperliquidSnapshot ?? getHyperliquidSnapshot)();
+  const asset = findAsset(snapshot, symbolInput);
+  if (!asset) {
+    return telegramTableMessage('Unknown asset', [
+      ['Input', symbolInput],
+      ['Tracked', ASSETS.map(item => item.label).join(', ')],
+    ]);
+  }
+
+  const alerts = await (deps.getDecisionTreeAlertsForSymbol ?? getDecisionTreeAlertsForSymbol)(chatId, asset.symbol);
+  if (!alerts) return postgresRequiredMessage();
+  if (!alerts.length) {
+    return telegramTableMessage('No active decision tree', [
+      ['Symbol', asset.symbol],
+      ['Next step', 'Create one with /treealert.'],
+    ]);
+  }
+
+  const classification = await (deps.classifyAssetDecisionTreeCondition ?? classifyAssetDecisionTreeCondition)({
+    asset,
+    currentPrice: asset.price,
+    indicators: asset.indicators ?? {},
+    activeRules: alerts,
+    rawTree: alerts[0]?.rawTree ?? '',
+  });
+  const matched = alerts.filter(alert => classification.matchedRuleIds.map(String).includes(String(alert.id)));
+  const condition = matched.map(alert => alert.conditionText).join('; ') || classification.currentCondition;
+  const action = matched.map(alert => alert.actionText).join('; ') || classification.decision;
+
+  return telegramTableMessage(`Decision-tree condition: ${asset.symbol}`, [
+    ['Symbol', asset.symbol],
+    ['Price', formatNumber(classification.price ?? asset.price)],
+    ['Matched/current condition', condition],
+    ['Plan/action', action],
+    ['Confidence', `${Math.round(Number(classification.confidence ?? 0) * 100)}% (${classification.source ?? 'ai'})`],
+    ['AI reasoning', classification.reasoningSummary],
+  ]);
+}
+
+export async function buildReply(text, chatId, deps = {}) {
   const { command, args, body } = parseCommand(text);
 
   if (command === '/start' || command === '/help') {
@@ -257,7 +317,7 @@ async function buildReply(text, chatId) {
   }
 
   if (command === '/prices') {
-    const snapshot = await getHyperliquidSnapshot();
+    const snapshot = await (deps.getHyperliquidSnapshot ?? getHyperliquidSnapshot)();
     return pricesMessage(snapshot);
   }
 
@@ -268,7 +328,7 @@ async function buildReply(text, chatId) {
       ]);
     }
 
-    const snapshot = await getHyperliquidSnapshot();
+    const snapshot = await (deps.getHyperliquidSnapshot ?? getHyperliquidSnapshot)();
     const asset = findAsset(snapshot, args[0]);
     if (!asset) {
       return telegramTableMessage('Unknown asset', [
@@ -278,6 +338,10 @@ async function buildReply(text, chatId) {
     }
 
     return assetMessage(asset, snapshot);
+  }
+
+  if (command === '/condition' || command === '/treecondition') {
+    return conditionMessage({ chatId, symbolInput: args[0], deps });
   }
 
   if (command === '/treealert' || command === '/decisiontree') {
