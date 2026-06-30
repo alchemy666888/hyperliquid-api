@@ -60,9 +60,10 @@ test('formats triggered alert message', () => {
   const { rules } = parseDecisionTreeAlertText(MU_TREE, { assets: ASSETS });
   const message = formatDecisionTreeAlertHit(rules[0], 1198);
 
-  assert.match(message, /Decision-tree alert hit: MU/);
-  assert.match(message, /Price: \$1,198/);
-  assert.match(message, /Condition: MU above \$1,164 and holds\?/);
+  assert.equal(message.parseMode, 'HTML');
+  assert.match(message.text, /<b>Decision-tree alert hit: MU<\/b>/);
+  assert.match(message.text, /<b>Price:<\/b> <code>\$1,198<\/code>/);
+  assert.match(message.text, /<b>Condition:<\/b> <code>MU above \$1,164 and holds\?<\/code>/);
 });
 
 test('formats alert summaries with optional expiration metadata', () => {
