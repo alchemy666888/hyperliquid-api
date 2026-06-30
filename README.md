@@ -10,7 +10,7 @@ A Vercel serverless project that exposes Hyperliquid market data through both:
 - Fetches live prices from Hyperliquid
 - Computes 4H technical indicators: ADX, RSI, MACD, EMA20/50, Bollinger Bands, ATR, and volume
 - Classifies each asset into a coarse market regime
-- Persists Hyperliquid snapshots and Telegram decision-tree alerts to PostgreSQL when Vercel database env vars are configured
+- Persists Hyperliquid snapshots and 24-hour Telegram decision-tree alerts to PostgreSQL when Vercel database env vars are configured
 - Supports Telegram commands for market summaries and per-asset details
 - Keeps the existing `/api/hyperliquid` JSON endpoint available
 
@@ -146,7 +146,9 @@ MU between $1,126 and $1,164?
 
 Supported condition styles are `above`, `below`/`closes below`, `between`, and range conditions such as `holds $1,126–$1,116` or `rejects $1,155–$1,164`.
 
-Alerts are checked whenever `/api/hyperliquid` refreshes market data. The bot sends a Telegram message when a saved condition changes from inactive to active, then rearms after the price leaves that condition. Use `/alerts` to list active alerts and `/clearalerts [symbol]` to deactivate them.
+Alerts expire 24 hours after they are saved, or sooner when cancelled with `/clearalerts [symbol]`. Active alerts are scoped to the Telegram chat that created them; `/alerts`, `/clearalerts`, and alert notifications only use that chat's saved alerts.
+
+Vercel Cron calls `/api/hyperliquid` every 10 minutes to fetch the latest prices and process active alerts. The bot sends a Telegram message when a saved condition changes from inactive to active, then rearms after the price leaves that condition. Use `/alerts` to list active alerts and `/clearalerts [symbol]` to deactivate them manually.
 
 ## API Usage
 
@@ -157,6 +159,7 @@ GET https://your-domain.vercel.app/api/hyperliquid
 ```
 
 Fetches live market data and saves the snapshot to PostgreSQL when configured.
+This endpoint is also invoked by Vercel Cron every 10 minutes so alert checks run without a manual request.
 
 ```text
 GET https://your-domain.vercel.app/api/hyperliquid?stored=latest
