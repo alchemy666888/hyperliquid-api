@@ -41,6 +41,7 @@ test('answerStatelessAiChat sends only current request and market context to AI'
   assert.match(messages[0].content, /stateless/);
   assert.match(messages[0].content, /daily-life topics/);
   assert.match(messages[0].content, /Use the market context only when the request is about markets/);
+  assert.match(messages[0].content, /Telegram-compatible HTML, not Markdown/);
   assert.match(messages[0].content, /Do not refer to or infer previous conversation history/);
 
   const userPayload = JSON.parse(messages[1].content);
@@ -68,11 +69,44 @@ test('answerStatelessAiChat supports daily-life chat without market footer', asy
   assert.doesNotMatch(reply.text, /Informational only/);
 
   assert.match(messages[0].content, /daily-life topics/);
+  assert.match(messages[0].content, /Telegram-compatible HTML, not Markdown/);
   const userPayload = JSON.parse(messages[1].content);
   assert.equal(userPayload.currentRequest, 'What should I cook for dinner tonight?');
   assert.equal(userPayload.marketRelatedRequest, false);
   assert.equal(userPayload.marketContext.assets[0].symbol, 'BTCUSDT');
   assert.equal(Object.hasOwn(userPayload, 'history'), false);
+});
+
+test('answerStatelessAiChat renders safe Telegram HTML from AI replies', async () => {
+  const reply = await answerStatelessAiChat({
+    message: 'Give me a quick dinner idea',
+    getSnapshot: async () => snapshot,
+    deepSeekChat: async () => ({
+      ok: true,
+      text: '<b>Try this</b>: tofu and rice. <script>alert("x")</script>',
+    }),
+  });
+
+  assert.equal(reply.parseMode, 'HTML');
+  assert.match(reply.text, /<b>Try this<\/b>/);
+  assert.match(reply.text, /&lt;script&gt;alert\("x"\)&lt;\/script&gt;/);
+  assert.doesNotMatch(reply.text, /<script>/);
+});
+
+test('answerStatelessAiChat converts common Markdown formatting to Telegram HTML', async () => {
+  const reply = await answerStatelessAiChat({
+    message: 'Give me a short morning routine',
+    getSnapshot: async () => snapshot,
+    deepSeekChat: async () => ({
+      ok: true,
+      text: '**Morning plan**: drink water, stretch, then write `top priority`.',
+    }),
+  });
+
+  assert.equal(reply.parseMode, 'HTML');
+  assert.match(reply.text, /<b>Morning plan<\/b>/);
+  assert.match(reply.text, /<code>top priority<\/code>/);
+  assert.doesNotMatch(reply.text, /\*\*Morning plan\*\*/);
 });
 
 test('answerStatelessAiChat returns setup guidance when AI is unavailable', async () => {
