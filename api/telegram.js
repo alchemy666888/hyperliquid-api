@@ -4,6 +4,7 @@ import {
   getPostgresStatus,
   getDecisionTreeAlertsForSymbol,
   listDecisionTreeAlerts,
+  saveTelegramChatMessage,
   saveDecisionTreeAlerts,
 } from '../lib/postgres.js';
 import {
@@ -11,6 +12,7 @@ import {
   parseDecisionTreeAlertTextWithAi,
 } from '../lib/decision-tree-alerts.js';
 import { classifyAssetDecisionTreeCondition } from '../lib/ai-decision-tree-alerts.js';
+import { answerStatelessAiChat } from '../lib/conversational-ai.js';
 import { sendTelegramMessage } from '../lib/telegram-client.js';
 import {
   formatTelegramDate,
@@ -58,6 +60,14 @@ function parseCommand(text) {
   return { command, args, body: body.trim() };
 }
 
+function isSlashCommand(text) {
+  return text.trim().startsWith('/');
+}
+
+function telegramMessageType(text) {
+  return isSlashCommand(text) ? 'command' : 'ai_chat';
+}
+
 function formatNumber(value) {
   if (value == null || Number.isNaN(Number(value))) return 'n/a';
   const num = Number(value);
@@ -100,6 +110,7 @@ function findAsset(snapshot, input) {
 
 function helpMessage() {
   return telegramTableMessage('Hyperliquid Market Bot', [
+    ['Chat', 'Send a normal message to ask AI about the current market. No command needed.'],
     ['/prices', 'Show all tracked prices and regimes'],
     ['/asset BTCUSDT', 'Show 4H indicators for one asset'],
     ['/treealert', 'Save pasted decision-tree alerts'],
@@ -111,6 +122,7 @@ function helpMessage() {
     ['Setup', '/treealert | MU above $1,164 and holds? | -> Long toward $1,198'],
     ['Check', '/condition MU'],
     ['Expiry', 'Alerts expire after 24 hours unless manually cancelled with /clearalerts.'],
+    ['AI memory', 'Chat history is saved when PostgreSQL is configured, but AI replies only use your current request.'],
     ['Assets', ASSETS.map(asset => asset.label).join(', ')],
   ]);
 }
@@ -418,7 +430,67 @@ export async function buildReply(text, chatId, deps = {}) {
     return clearTreeAlerts(chatId, args[0]);
   }
 
+  if (!isSlashCommand(text)) {
+    return (deps.answerStatelessAiChat ?? answerStatelessAiChat)({
+      message: text,
+      getSnapshot: deps.getHyperliquidSnapshot,
+      deepSeekChat: deps.deepSeekChat,
+    });
+  }
+
   return helpMessage();
+}
+
+async function persistTelegramChatMessage({
+  chatId,
+  direction,
+  messageText,
+  messageType,
+  telegramMessageId,
+  deps = {},
+}) {
+  const saveMessage = deps.saveTelegramChatMessage ?? saveTelegramChatMessage;
+  try {
+    return await saveMessage({
+      chatId,
+      direction,
+      messageText,
+      messageType,
+      telegramMessageId,
+    });
+  } catch (error) {
+    console.warn('telegram chat message persistence failed:', error);
+    return null;
+  }
+}
+
+export async function processTelegramText({
+  text,
+  chatId,
+  telegramMessageId,
+  deps = {},
+} = {}) {
+  const messageType = telegramMessageType(text);
+  await persistTelegramChatMessage({
+    chatId,
+    direction: 'inbound',
+    messageText: text,
+    messageType,
+    telegramMessageId,
+    deps,
+  });
+
+  const reply = normalizeReply(await buildReply(text, chatId, deps));
+
+  await persistTelegramChatMessage({
+    chatId,
+    direction: 'outbound',
+    messageText: reply.text,
+    messageType,
+    deps,
+  });
+
+  return reply;
 }
 
 export default async function handler(req, res) {
@@ -471,7 +543,11 @@ export default async function handler(req, res) {
       return;
     }
 
-    const reply = normalizeReply(await buildReply(text, chatId));
+    const reply = await processTelegramText({
+      text,
+      chatId,
+      telegramMessageId: message.message_id,
+    });
     await sendTelegramMessage(token, chatId, reply.text, { parseMode: reply.parseMode });
     res.status(200).json({ status: 'sent' });
   } catch (error) {

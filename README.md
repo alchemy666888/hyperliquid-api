@@ -65,7 +65,7 @@ When `TELEGRAM_SECRET_TOKEN` is set, `/api/telegram` validates `x-telegram-bot-a
 
 ## DeepSeek AI Setup
 
-The `/condition <symbol>` Telegram command uses DeepSeek to classify the current asset state against the saved decision tree for that chat. The bot only needs the API key to enable DeepSeek; optional values let you point at a compatible endpoint or override the model.
+The bot uses DeepSeek for `/condition <symbol>` classification and for normal no-command AI chat. No-command chat is stateless: each reply only uses the current user message plus fresh Hyperliquid market context, even though the raw communication history is persisted when PostgreSQL is configured.
 
 Required variable:
 
@@ -96,7 +96,7 @@ Expected response includes `config.deepseek.configured: true` when `DEEPSEEK_API
 
 ## PostgreSQL Persistence Setup
 
-The API stores each successful Hyperliquid snapshot in PostgreSQL JSONB when database environment variables are present.
+The API stores each successful Hyperliquid snapshot in PostgreSQL JSONB when database environment variables are present. Telegram communication history is also stored per chat when PostgreSQL is configured, but that stored history is not loaded into AI chat prompts.
 
 Add these variables in Vercel (`Project -> Settings -> Environment Variables`):
 
@@ -132,6 +132,20 @@ CREATE TABLE IF NOT EXISTS hyperliquid_snapshots (
 );
 ```
 
+Telegram text messages are persisted in a separate table:
+
+```sql
+CREATE TABLE IF NOT EXISTS telegram_chat_messages (
+  id BIGSERIAL PRIMARY KEY,
+  chat_id TEXT NOT NULL,
+  direction TEXT NOT NULL,
+  message_text TEXT NOT NULL,
+  message_type TEXT NOT NULL,
+  telegram_message_id TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
 Configuration can be checked without exposing secrets:
 
 ```text
@@ -141,6 +155,14 @@ GET https://your-domain.vercel.app/api/telegram
 Expected response includes `config.postgres.configured: true` after all database env vars are set.
 
 ## Telegram Commands
+
+You can talk to the bot normally without a slash command, for example:
+
+```text
+What is happening with BTC right now?
+```
+
+The AI reply uses only that current request and a fresh market snapshot. Previous communication history is saved to PostgreSQL when configured, but it is not considered as chat memory.
 
 ```text
 /start
