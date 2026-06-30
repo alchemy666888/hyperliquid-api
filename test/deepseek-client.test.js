@@ -4,16 +4,21 @@ import { requestDeepSeekChat, requestDeepSeekJson } from '../lib/deepseek-client
 
 test('requestDeepSeekJson safely rejects malformed model JSON content', async () => {
   process.env.DEEPSEEK_API_KEY = 'test-key';
+  let requestBody;
   const result = await requestDeepSeekJson({
     messages: [{ role: 'user', content: 'return json' }],
-    fetchImpl: async () => ({
-      ok: true,
-      json: async () => ({ choices: [{ message: { content: 'not json' } }] }),
-    }),
+    fetchImpl: async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'not json' } }] }),
+      };
+    },
   });
 
   assert.equal(result.ok, false);
   assert.match(result.error, /JSON object/);
+  assert.equal(requestBody.search_enable, true);
   delete process.env.DEEPSEEK_API_KEY;
 });
 
@@ -36,17 +41,16 @@ test('requestDeepSeekChat returns plain model text without JSON response format'
   assert.equal(result.text, 'Hi there.');
   assert.deepEqual(result.usage, { total_tokens: 7 });
   assert.equal(requestBody.response_format, undefined);
-  assert.equal(requestBody.search_enable, undefined);
+  assert.equal(requestBody.search_enable, true);
   delete process.env.DEEPSEEK_API_KEY;
 });
 
-test('requestDeepSeekChat can enable DeepSeek search in request body', async () => {
+test('requestDeepSeekChat keeps DeepSeek search enabled even without caller options', async () => {
   process.env.DEEPSEEK_API_KEY = 'test-key';
   let requestBody;
 
   const result = await requestDeepSeekChat({
     messages: [{ role: 'user', content: 'hello with search' }],
-    searchEnable: true,
     fetchImpl: async (_url, options) => {
       requestBody = JSON.parse(options.body);
       return {

@@ -37,7 +37,6 @@ test('answerStatelessAiChat sends only current request and market context to AI'
   assert.match(reply.text, /BTCUSDT 61,000/);
   assert.match(reply.text, /Informational only/);
 
-  assert.equal(aiRequest.searchEnable, true);
   const messages = aiRequest.messages;
   assert.equal(messages.length, 2);
   assert.match(messages[0].content, /stateless/);
@@ -70,7 +69,6 @@ test('answerStatelessAiChat supports daily-life chat without market footer', asy
   assert.doesNotMatch(reply.text, /Market context:/);
   assert.doesNotMatch(reply.text, /Informational only/);
 
-  assert.equal(aiRequest.searchEnable, true);
   const messages = aiRequest.messages;
   assert.match(messages[0].content, /daily-life topics/);
   assert.match(messages[0].content, /Telegram-compatible HTML, not Markdown/);
