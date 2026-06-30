@@ -261,8 +261,8 @@ async function clearTreeAlerts(chatId, symbolInput) {
   ]);
 }
 
-async function evaluateAssetCondition({ chatId, asset, activeRules, deps = {} }) {
-  const alerts = activeRules ?? await (deps.getDecisionTreeAlertsForSymbol ?? getDecisionTreeAlertsForSymbol)(chatId, asset.symbol);
+async function evaluateAssetCondition({ chatId, asset, deps = {} }) {
+  const alerts = await (deps.getDecisionTreeAlertsForSymbol ?? getDecisionTreeAlertsForSymbol)(chatId, asset.symbol);
   if (!alerts) return { status: 'postgres-required', asset };
   if (!alerts.length) {
     return {
@@ -317,6 +317,10 @@ function allAssetConditionsMessage(results, snapshot) {
   const rows = results
     .toSorted((a, b) => a.asset.symbol.localeCompare(b.asset.symbol))
     .map(result => {
+      if (result.status === 'no-active-tree') {
+        return [result.asset.symbol, 'No active decision tree'];
+      }
+
       const price = formatNumber(result.classification.price ?? result.asset.price);
       return [
         result.asset.symbol,
@@ -334,8 +338,9 @@ function allAssetConditionsMessage(results, snapshot) {
 async function conditionMessage({ chatId, symbolInput, deps = {} }) {
   if (!getPostgresStatus().configured) return postgresRequiredMessage();
 
+  const snapshot = await (deps.getHyperliquidSnapshot ?? getHyperliquidSnapshot)();
+
   if (symbolInput) {
-    const snapshot = await (deps.getHyperliquidSnapshot ?? getHyperliquidSnapshot)();
     const asset = findAsset(snapshot, symbolInput);
     if (!asset) {
       return telegramTableMessage('Unknown asset', [
@@ -349,16 +354,6 @@ async function conditionMessage({ chatId, symbolInput, deps = {} }) {
     return singleAssetConditionMessage(result);
   }
 
-  const allAlerts = await (deps.listDecisionTreeAlerts ?? listDecisionTreeAlerts)(chatId);
-  if (!allAlerts) return postgresRequiredMessage();
-  if (!allAlerts.length) {
-    return telegramTableMessage('Decision-tree conditions', [
-      ['Status', 'No active decision-tree alerts for this chat.'],
-      ['Next step', 'Create one with /treealert.'],
-    ]);
-  }
-
-  const snapshot = await (deps.getHyperliquidSnapshot ?? getHyperliquidSnapshot)();
   const assets = [...(snapshot.assets ?? [])];
   if (!assets.length) {
     return telegramTableMessage('Decision-tree conditions', [
@@ -366,21 +361,11 @@ async function conditionMessage({ chatId, symbolInput, deps = {} }) {
     ]);
   }
 
-  const alertsBySymbol = Map.groupBy(allAlerts, alert => normalizeAlertSymbol(alert.symbol));
   const results = [];
   for (const asset of assets) {
-    const alerts = alertsBySymbol.get(normalizeAlertSymbol(asset.symbol));
-    if (!alerts?.length) continue;
-
-    const result = await evaluateAssetCondition({ chatId, asset, activeRules: alerts, deps });
+    const result = await evaluateAssetCondition({ chatId, asset, deps });
     if (result.status === 'postgres-required') return postgresRequiredMessage();
     results.push(result);
-  }
-
-  if (!results.length) {
-    return telegramTableMessage('Decision-tree conditions', [
-      ['Status', 'No active decision-tree alerts match configured assets.'],
-    ]);
   }
 
   return allAssetConditionsMessage(results, snapshot);

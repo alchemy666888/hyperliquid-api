@@ -153,7 +153,7 @@ Expected response includes `config.postgres.configured: true` after all database
 /clearalerts [MU]
 ```
 
-`/prices` returns all tracked prices and regimes. `/asset <symbol>` returns a detailed 4H indicator snapshot for one asset. `/condition <symbol>` (or `/treecondition <symbol>`) classifies the current price against that chat's saved decision tree for one asset; `/condition` without a symbol evaluates every tracked asset that has active decision-tree alerts.
+`/prices` returns all tracked prices and regimes. `/asset <symbol>` returns a detailed 4H indicator snapshot for one asset. `/condition <symbol>` (or `/treecondition <symbol>`) classifies the current price against that chat's saved decision tree for one asset; `/condition` without a symbol evaluates every tracked asset.
 
 ### Decision-tree alerts
 
@@ -181,7 +181,7 @@ Supported condition styles are `above`, `below`/`closes below`, `between`, and r
 
 Alerts expire 24 hours after they are saved, or sooner when cancelled with `/clearalerts [symbol]`. Active alerts are scoped to the Telegram chat that created them; `/alerts`, `/clearalerts`, and alert notifications only use that chat's saved alerts.
 
-Run the JavaScript alert scheduler to fetch the latest prices and process active alerts every 10 minutes. The bot sends a Telegram message when a saved condition changes from inactive to active, then rearms after the price leaves that condition. Use `/alerts` to list active alerts, `/condition [symbol]` to inspect the current matched tree condition and AI plan for one asset or all tracked assets with active alerts, and `/clearalerts [symbol]` to deactivate them manually.
+Run the JavaScript alert scheduler to fetch the latest prices and process active alerts every 10 minutes. The bot sends a Telegram message when a saved condition changes from inactive to active, then rearms after the price leaves that condition. Use `/alerts` to list active alerts, `/condition [symbol]` to inspect the current matched tree condition and AI plan for one asset or all tracked assets, and `/clearalerts [symbol]` to deactivate them manually.
 
 ```bash
 npm run alert-scheduler
