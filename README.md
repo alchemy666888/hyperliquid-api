@@ -62,6 +62,38 @@ curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
 If you do not set `TELEGRAM_SECRET_TOKEN`, omit `secret_token` from the request.
 When `TELEGRAM_SECRET_TOKEN` is set, `/api/telegram` validates `x-telegram-bot-api-secret-token` for every webhook call.
 
+
+## DeepSeek AI Setup
+
+The `/condition <symbol>` Telegram command uses DeepSeek to classify the current asset state against the saved decision tree for that chat. The bot only needs the API key to enable DeepSeek; optional values let you point at a compatible endpoint or override the model.
+
+Required variable:
+
+```bash
+vercel env add DEEPSEEK_API_KEY
+```
+
+Optional variables:
+
+```bash
+vercel env add DEEPSEEK_BASE_URL
+vercel env add DEEPSEEK_MODEL
+```
+
+`DEEPSEEK_BASE_URL` is optional when using DeepSeek's default API endpoint. `DEEPSEEK_MODEL` is optional when the app default model is acceptable. Redeploy after changing environment variables:
+
+```bash
+vercel deploy --prod
+```
+
+Configuration can be checked without exposing secret values:
+
+```text
+GET https://your-domain.vercel.app/api/telegram
+```
+
+Expected response includes `config.deepseek.configured: true` when `DEEPSEEK_API_KEY` is set. The GET config response exposes only booleans for DeepSeek, such as `configured`, `baseUrlConfigured`, and `modelConfigured`; it does not return the API key, base URL, or model value.
+
 ## PostgreSQL Persistence Setup
 
 The API stores each successful Hyperliquid snapshot in PostgreSQL JSONB when database environment variables are present.
@@ -261,6 +293,9 @@ hyperliquid-api/
 | Bot does not reply | Confirm `/api/telegram` shows `botTokenConfigured: true`, then redeploy. |
 | Webhook returns 401 | Check that Telegram `secret_token` matches `TELEGRAM_SECRET_TOKEN`. |
 | Snapshots are not saved | Confirm `/api/telegram` shows `config.postgres.configured: true`, then redeploy. |
+| `/condition` says DeepSeek is not configured | Add `DEEPSEEK_API_KEY` with `vercel env add DEEPSEEK_API_KEY`, redeploy, and confirm `/api/telegram` shows `config.deepseek.configured: true`. |
+| Malformed AI response | DeepSeek returned text that could not be parsed into the expected classification format; retry the command and check Vercel logs for the non-secret parse error. |
+| Fallback deterministic behavior | If DeepSeek is unavailable or its response is malformed, the bot should fall back to deterministic rule evaluation from the saved decision tree so no secret values are logged or exposed. |
 | `/prices` is slow | Hyperliquid candle requests can take several seconds; check Vercel logs. |
 | Empty prices | Hyperliquid may be rate-limited or returning no candles; retry later. |
 | API 404 | Confirm the deployed URL uses `/api/hyperliquid` or `/api/telegram`. |

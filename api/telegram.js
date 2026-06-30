@@ -36,6 +36,14 @@ function readEnv(name) {
   return value.trim();
 }
 
+function getDeepSeekStatus() {
+  return {
+    configured: Boolean(readEnv('DEEPSEEK_API_KEY')),
+    baseUrlConfigured: Boolean(readEnv('DEEPSEEK_BASE_URL')),
+    modelConfigured: Boolean(readEnv('DEEPSEEK_MODEL')),
+  };
+}
+
 function safeEqual(a, b) {
   const aBuf = Buffer.from(a);
   const bBuf = Buffer.from(b);
@@ -364,6 +372,7 @@ export default async function handler(req, res) {
         botTokenConfigured: Boolean(token),
         secretTokenConfigured: Boolean(expectedSecret),
         postgres: getPostgresStatus(),
+        deepseek: getDeepSeekStatus(),
       },
     });
     return;
