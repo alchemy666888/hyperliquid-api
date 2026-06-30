@@ -1,4 +1,5 @@
 import { ASSETS, getHyperliquidSnapshot } from '../lib/hyperliquid.js';
+import { getPostgresStatus } from '../lib/postgres.js';
 import { timingSafeEqual } from 'node:crypto';
 
 const TELEGRAM_API_BASE = 'https://api.telegram.org';
@@ -165,6 +166,7 @@ export default async function handler(req, res) {
       config: {
         botTokenConfigured: Boolean(token),
         secretTokenConfigured: Boolean(expectedSecret),
+        postgres: getPostgresStatus(),
       },
     });
     return;
