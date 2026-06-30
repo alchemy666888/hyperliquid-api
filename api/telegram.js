@@ -38,6 +38,53 @@ function readEnv(name) {
   return value.trim();
 }
 
+function normalizeBotUsername(value) {
+  return value.trim().replace(/^@/, '').toLowerCase();
+}
+
+function isGroupChat(chat) {
+  return chat?.type === 'group' || chat?.type === 'supergroup';
+}
+
+function sliceTelegramEntity(text, entity) {
+  return text.slice(entity.offset, entity.offset + entity.length);
+}
+
+function isBotMentionEntity(text, entity, botUsername) {
+  if (!botUsername || entity?.type !== 'mention') return false;
+  return normalizeBotUsername(sliceTelegramEntity(text, entity)) === botUsername;
+}
+
+function isBotCommandEntity(text, entity, botUsername) {
+  if (!botUsername || entity?.type !== 'bot_command') return false;
+  const command = sliceTelegramEntity(text, entity);
+  const [, suffix = ''] = command.match(/^\/\S+@([^@\s]+)$/) ?? [];
+  return normalizeBotUsername(suffix) === botUsername;
+}
+
+function removeTelegramEntity(text, entity) {
+  const before = text.slice(0, entity.offset);
+  const after = text.slice(entity.offset + entity.length);
+  return `${before}${after}`.replace(/[ \t]{2,}/g, ' ').trim();
+}
+
+export function getProcessableTelegramText(message, botUsernameInput = '') {
+  const text = message?.text;
+  if (typeof text !== 'string' || !text.trim()) return '';
+
+  if (!isGroupChat(message?.chat)) return text;
+
+  const botUsername = normalizeBotUsername(botUsernameInput);
+  if (!botUsername) return '';
+
+  const entities = message.entities ?? [];
+  const mention = entities.find(entity => isBotMentionEntity(text, entity, botUsername));
+  if (mention) return removeTelegramEntity(text, mention);
+
+  const command = entities.find(entity => isBotCommandEntity(text, entity, botUsername));
+  return command ? text : '';
+}
+
 function getDeepSeekStatus() {
   return {
     configured: Boolean(readEnv('DEEPSEEK_API_KEY')),
@@ -496,6 +543,7 @@ export async function processTelegramText({
 export default async function handler(req, res) {
   const token = readEnv('TELEGRAM_BOT_TOKEN');
   const expectedSecret = readEnv('TELEGRAM_SECRET_TOKEN');
+  const botUsername = readEnv('TELEGRAM_BOT_USERNAME');
 
   if (req.method === 'GET') {
     res.status(200).json({
@@ -504,6 +552,7 @@ export default async function handler(req, res) {
       vercelEnv: process.env.VERCEL_ENV ?? 'unknown',
       config: {
         botTokenConfigured: Boolean(token),
+        botUsernameConfigured: Boolean(botUsername),
         secretTokenConfigured: Boolean(expectedSecret),
         postgres: getPostgresStatus(),
         deepseek: getDeepSeekStatus(),
@@ -536,7 +585,7 @@ export default async function handler(req, res) {
     const update = parseUpdateBody(req);
     const message = update.message ?? update.edited_message;
     const chatId = message?.chat?.id;
-    const text = message?.text;
+    const text = getProcessableTelegramText(message, botUsername);
 
     if (!chatId || !text) {
       res.status(200).json({ status: 'ignored' });

@@ -25,9 +25,13 @@ A Vercel serverless project that exposes Hyperliquid market data through both:
 
 ```bash
 vercel env add TELEGRAM_BOT_TOKEN
+vercel env add TELEGRAM_BOT_USERNAME
 vercel env add TELEGRAM_SECRET_TOKEN
 ```
 
+`TELEGRAM_BOT_USERNAME` is the bot username from BotFather, without or with the leading `@`.
+It is required for group and supergroup chats: the bot ignores normal group messages and only answers
+messages that mention `@YourBotUsername` or commands targeted to the bot, such as `/help@YourBotUsername`.
 `TELEGRAM_SECRET_TOKEN` is optional, but recommended. Use a long random string.
 
 Dashboard path: `Project -> Settings -> Environment Variables`.
