@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vercel dev",
     "test": "node --test",
+    "alert-scheduler": "node scripts/alert-scheduler.js",
     "deploy": "vercel deploy --prod"
   },
   "keywords": [
