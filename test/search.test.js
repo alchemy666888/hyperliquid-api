@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  createGoogleSearchTool,
   getGoogleSearchStatus,
   parseGoogleSearchOutput,
   searchGoogleForContext,
@@ -16,7 +17,7 @@ test('getGoogleSearchStatus reports missing Google Custom Search variables safel
   assert.deepEqual(status.missing, ['GOOGLE_API_KEY', 'GOOGLE_CSE_ID']);
 });
 
-test('parseGoogleSearchOutput normalizes LangChain Google Custom Search JSON', () => {
+test('parseGoogleSearchOutput normalizes Google Custom Search JSON', () => {
   const results = parseGoogleSearchOutput(JSON.stringify([
     {
       title: ' First result ',
@@ -40,7 +41,44 @@ test('parseGoogleSearchOutput normalizes LangChain Google Custom Search JSON', (
   ]);
 });
 
-test('searchGoogleForContext invokes an injected LangChain-style search tool', async () => {
+test('createGoogleSearchTool calls Google Custom Search and returns compact JSON', async () => {
+  let requestedUrl;
+  const tool = createGoogleSearchTool({
+    apiKey: 'google-key',
+    googleCSEId: 'search-engine-id',
+    resultLimit: 3,
+  }, {
+    fetchImpl: async url => {
+      requestedUrl = url;
+      return {
+        ok: true,
+        json: async () => ({
+          items: [
+            {
+              title: 'OpenAI announces update',
+              link: 'https://example.com/openai-update',
+              snippet: 'The result snippet.',
+            },
+          ],
+        }),
+      };
+    },
+  });
+
+  const output = await tool.invoke('latest OpenAI news');
+  const results = JSON.parse(output);
+
+  assert.equal(requestedUrl.href, 'https://www.googleapis.com/customsearch/v1?key=google-key&cx=search-engine-id&q=latest+OpenAI+news&num=3');
+  assert.deepEqual(results, [
+    {
+      title: 'OpenAI announces update',
+      link: 'https://example.com/openai-update',
+      snippet: 'The result snippet.',
+    },
+  ]);
+});
+
+test('searchGoogleForContext invokes an injected Google search tool', async () => {
   let searchedQuery;
   const context = await searchGoogleForContext({
     query: '  latest OpenAI news  ',
