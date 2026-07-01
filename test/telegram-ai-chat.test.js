@@ -69,6 +69,47 @@ test('getProcessableTelegramText strips bot mention from group text', () => {
   assert.equal(getProcessableTelegramText(message, 'marketbot'), 'What about BTC right now?');
 });
 
+test('getProcessableTelegramText recognizes the trading alchemist bot mention by default', () => {
+  const mention = '@trading_alchemist_bot';
+  const message = {
+    chat: { id: -123, type: 'supergroup' },
+    text: `${mention} say something`,
+    entities: [{ type: 'mention', offset: 0, length: mention.length }],
+  };
+
+  assert.equal(getProcessableTelegramText(message), 'say something');
+});
+
+test('getProcessableTelegramText uses configured group bot username before default fallback', () => {
+  const mention = '@trading_alchemist_bot';
+  const message = {
+    chat: { id: -123, type: 'supergroup' },
+    text: `${mention} say something`,
+    entities: [{ type: 'mention', offset: 0, length: mention.length }],
+  };
+
+  assert.equal(getProcessableTelegramText(message, 'MarketBot'), '');
+});
+
+test('getProcessableTelegramText recognizes group mentions even without entity metadata', () => {
+  const message = {
+    chat: { id: -123, type: 'supergroup' },
+    text: 'hey @trading_alchemist_bot say something',
+  };
+
+  assert.equal(getProcessableTelegramText(message), 'hey say something');
+});
+
+test('getProcessableTelegramText ignores group mentions for other bots', () => {
+  const message = {
+    chat: { id: -123, type: 'supergroup' },
+    text: '@other_bot say something',
+    entities: [{ type: 'mention', offset: 0, length: '@other_bot'.length }],
+  };
+
+  assert.equal(getProcessableTelegramText(message), '');
+});
+
 test('getProcessableTelegramText keeps bot-targeted group commands', () => {
   const command = '/help@MarketBot';
   const message = {
@@ -80,7 +121,7 @@ test('getProcessableTelegramText keeps bot-targeted group commands', () => {
   assert.equal(getProcessableTelegramText(message, 'MarketBot'), command);
 });
 
-test('getProcessableTelegramText keeps bare group commands routed to the bot', () => {
+test('getProcessableTelegramText ignores bare group commands', () => {
   const command = '/help';
   const message = {
     chat: { id: -123, type: 'group' },
@@ -88,10 +129,10 @@ test('getProcessableTelegramText keeps bare group commands routed to the bot', (
     entities: [{ type: 'bot_command', offset: 0, length: command.length }],
   };
 
-  assert.equal(getProcessableTelegramText(message), command);
+  assert.equal(getProcessableTelegramText(message), '');
 });
 
-test('getProcessableTelegramText keeps group replies to the bot', () => {
+test('getProcessableTelegramText ignores group replies without a bot mention', () => {
   const message = {
     chat: { id: -123, type: 'supergroup' },
     text: 'Can you explain BTC here?',
@@ -102,7 +143,7 @@ test('getProcessableTelegramText keeps group replies to the bot', () => {
 
   assert.equal(
     getProcessableTelegramText(message, '@MarketBot'),
-    'Can you explain BTC here?'
+    ''
   );
 });
 

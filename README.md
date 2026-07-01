@@ -30,10 +30,11 @@ vercel env add TELEGRAM_SECRET_TOKEN
 ```
 
 `TELEGRAM_BOT_USERNAME` is the bot username from BotFather, without or with the leading `@`.
-It is recommended for group and supergroup chats so the bot can recognize `@YourBotUsername`
-mentions and commands targeted to the bot, such as `/help@YourBotUsername`. The bot ignores
-normal group messages, but it answers messages that mention it, slash commands routed to it, and
-messages that reply directly to the bot.
+It is recommended for group and supergroup chats so the bot can recognize mentions and commands
+targeted to it, such as `@YourBotUsername say something` or `/help@YourBotUsername`. If this value
+is omitted, this project recognizes `@trading_alchemist_bot` by default. The bot ignores normal
+group messages, bare group slash commands, and reply-only messages that do not explicitly mention
+the bot.
 `TELEGRAM_SECRET_TOKEN` is optional, but recommended. Use a long random string.
 
 Dashboard path: `Project -> Settings -> Environment Variables`.

@@ -40,8 +40,20 @@ function readEnv(name) {
   return value.trim();
 }
 
+const DEFAULT_TELEGRAM_BOT_USERNAME = 'trading_alchemist_bot';
+
 function normalizeBotUsername(value) {
-  return value.trim().replace(/^@/, '').toLowerCase();
+  return String(value ?? '').trim().replace(/^@/, '').toLowerCase();
+}
+
+function getBotUsernames(botUsernameInput = '') {
+  const configuredUsername = normalizeBotUsername(botUsernameInput);
+  const fallbackUsername = normalizeBotUsername(DEFAULT_TELEGRAM_BOT_USERNAME);
+  return new Set([configuredUsername || fallbackUsername].filter(Boolean));
+}
+
+function usernameMatchesBot(value, botUsernames) {
+  return botUsernames.has(normalizeBotUsername(value));
 }
 
 function isGroupChat(chat) {
@@ -52,30 +64,23 @@ function sliceTelegramEntity(text, entity) {
   return text.slice(entity.offset, entity.offset + entity.length);
 }
 
-function isBotMentionEntity(text, entity, botUsername) {
-  if (!botUsername || entity?.type !== 'mention') return false;
-  return normalizeBotUsername(sliceTelegramEntity(text, entity)) === botUsername;
+function isBotMentionEntity(text, entity, botUsernames) {
+  if (entity?.type === 'mention') {
+    return usernameMatchesBot(sliceTelegramEntity(text, entity), botUsernames);
+  }
+
+  if (entity?.type === 'text_mention') {
+    return usernameMatchesBot(entity?.user?.username, botUsernames);
+  }
+
+  return false;
 }
 
-function isBotCommandEntity(text, entity, botUsername) {
-  if (!botUsername || entity?.type !== 'bot_command') return false;
-  const command = sliceTelegramEntity(text, entity);
-  const [, suffix = ''] = command.match(/^\/\S+@([^@\s]+)$/) ?? [];
-  return normalizeBotUsername(suffix) === botUsername;
-}
-
-function isBareBotCommandEntity(text, entity) {
+function isBotCommandEntity(text, entity, botUsernames) {
   if (entity?.type !== 'bot_command') return false;
   const command = sliceTelegramEntity(text, entity);
-  return /^\/[^@\s]+$/.test(command);
-}
-
-function isReplyToThisBot(message, botUsername) {
-  const from = message?.reply_to_message?.from;
-  if (!from?.is_bot) return false;
-
-  const replyUsername = normalizeBotUsername(String(from.username ?? ''));
-  return botUsername ? replyUsername === botUsername : true;
+  const [, suffix = ''] = command.match(/^\/\S+@([^@\s]+)$/) ?? [];
+  return usernameMatchesBot(suffix, botUsernames);
 }
 
 function removeTelegramEntity(text, entity) {
@@ -84,26 +89,46 @@ function removeTelegramEntity(text, entity) {
   return `${before}${after}`.replace(/[ \t]{2,}/g, ' ').trim();
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function findBotMentionInText(text, botUsernames) {
+  for (const username of botUsernames) {
+    const pattern = new RegExp(`(^|[^A-Za-z0-9_])@${escapeRegExp(username)}(?![A-Za-z0-9_])`, 'i');
+    const match = pattern.exec(text);
+    if (match) {
+      return {
+        offset: match.index + match[1].length,
+        length: username.length + 1,
+      };
+    }
+  }
+
+  return null;
+}
+
+function isBotCommandText(text, botUsernames) {
+  const [, suffix = ''] = text.trim().match(/^\/\S+@([^@\s]+)(?:\s|$)/) ?? [];
+  return usernameMatchesBot(suffix, botUsernames);
+}
+
 export function getProcessableTelegramText(message, botUsernameInput = '') {
   const text = message?.text;
   if (typeof text !== 'string' || !text.trim()) return '';
 
   if (!isGroupChat(message?.chat)) return text;
 
-  const botUsername = normalizeBotUsername(botUsernameInput);
+  const botUsernames = getBotUsernames(botUsernameInput);
   const entities = message.entities ?? [];
-  if (botUsername) {
-    const mention = entities.find(entity => isBotMentionEntity(text, entity, botUsername));
-    if (mention) return removeTelegramEntity(text, mention);
-  }
+  const mention = entities.find(entity => isBotMentionEntity(text, entity, botUsernames))
+    ?? findBotMentionInText(text, botUsernames);
+  if (mention) return removeTelegramEntity(text, mention);
 
-  if (isReplyToThisBot(message, botUsername)) return text;
+  const command = entities.find(entity => isBotCommandEntity(text, entity, botUsernames));
+  if (command || isBotCommandText(text, botUsernames)) return text;
 
-  const command = entities.find(entity => isBotCommandEntity(text, entity, botUsername));
-  if (command) return text;
-
-  const bareCommand = entities.find(entity => isBareBotCommandEntity(text, entity));
-  return bareCommand ? text : '';
+  return '';
 }
 
 function safeEqual(a, b) {
