@@ -78,6 +78,60 @@ test('createGoogleSearchTool calls Google Custom Search and returns compact JSON
   ]);
 });
 
+test('createGoogleSearchTool logs sanitized Google API error details', async () => {
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args);
+
+  try {
+    const tool = createGoogleSearchTool({
+      apiKey: 'google-key',
+      googleCSEId: 'search-engine-id',
+      resultLimit: 3,
+    }, {
+      fetchImpl: async () => ({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        text: async () => JSON.stringify({
+          error: {
+            code: 403,
+            message: 'Custom Search API has not been used in project.',
+            status: 'PERMISSION_DENIED',
+            errors: [
+              {
+                message: 'Custom Search API has not been used in project.',
+                domain: 'usageLimits',
+                reason: 'accessNotConfigured',
+              },
+            ],
+          },
+        }),
+      }),
+    });
+
+    await assert.rejects(
+      () => tool.invoke('secret user query'),
+      /HTTP 403\. PERMISSION_DENIED \| Custom Search API has not been used/
+    );
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0][0], 'Google Custom Search request failed');
+
+  const details = warnings[0][1];
+  assert.equal(details.status, 403);
+  assert.equal(details.statusText, 'Forbidden');
+  assert.equal(details.apiKeyConfigured, true);
+  assert.equal(details.googleCSEId, 'sear...e-id');
+  assert.equal(details.googleError.status, 'PERMISSION_DENIED');
+  assert.equal(details.googleError.errors[0].reason, 'accessNotConfigured');
+  assert.doesNotMatch(JSON.stringify(details), /google-key/);
+  assert.doesNotMatch(JSON.stringify(details), /secret user query/);
+});
+
 test('searchGoogleForContext invokes an injected Google search tool', async () => {
   let searchedQuery;
   const context = await searchGoogleForContext({
