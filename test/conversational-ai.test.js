@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { answerStatelessAiChat } from '../lib/conversational-ai.js';
+import {
+  answerStatelessAiChat,
+  isWebSearchRelatedRequest,
+} from '../lib/conversational-ai.js';
 
 const snapshot = {
   interval: '4h',
@@ -57,6 +60,9 @@ test('answerStatelessAiChat sends only current request and market context to AI'
   const reply = await answerStatelessAiChat({
     message: 'What is BTC doing now?',
     getSnapshot: async () => snapshot,
+    getSearch: async () => {
+      throw new Error('market data-only request should not search the web');
+    },
     deepSeekChat: async request => {
       aiRequest = request;
       return { ok: true, text: 'BTC is firm on the current snapshot.' };
@@ -66,6 +72,7 @@ test('answerStatelessAiChat sends only current request and market context to AI'
   assert.equal(reply.parseMode, 'HTML');
   assert.match(reply.text, /BTC is firm/);
   assert.match(reply.text, /BTCUSDT 61,000/);
+  assert.match(reply.text, /Updated: 2026-06-30 08:00 HKT/);
   assert.match(reply.text, /Informational only/);
 
   const messages = aiRequest.messages;
@@ -80,8 +87,67 @@ test('answerStatelessAiChat sends only current request and market context to AI'
   assert.equal(userPayload.currentRequest, 'What is BTC doing now?');
   assert.equal(userPayload.marketRelatedRequest, true);
   assert.equal(userPayload.marketContext.assets[0].symbol, 'BTCUSDT');
+  assert.equal(userPayload.webSearchRelatedRequest, false);
+  assert.equal(userPayload.webSearchContext, null);
   assert.equal(Object.hasOwn(userPayload, 'history'), false);
   assert.equal(Object.hasOwn(userPayload, 'previousMessages'), false);
+});
+
+test('answerStatelessAiChat searches current news before asking AI to analyze it', async () => {
+  let searchedQuery;
+  let aiRequest;
+  const reply = await answerStatelessAiChat({
+    message: 'latest OpenAI news today',
+    getSnapshot: async () => snapshot,
+    getSearch: async ({ query }) => {
+      searchedQuery = query;
+      return {
+        ok: true,
+        source: 'google-custom-search',
+        query,
+        timestamp: '2026-07-01T00:00:00.000Z',
+        resultCount: 1,
+        results: [
+          {
+            rank: 1,
+            title: 'OpenAI shares product update',
+            link: 'https://example.com/openai-update',
+            snippet: 'A concise search result snippet.',
+          },
+        ],
+      };
+    },
+    deepSeekChat: async request => {
+      aiRequest = request;
+      return { ok: true, text: 'OpenAI has a new update based on the search result.' };
+    },
+  });
+
+  assert.equal(searchedQuery, 'latest OpenAI news today');
+  assert.match(reply.text, /OpenAI has a new update/);
+  assert.match(aiRequest.messages[0].content, /webSearchContext/);
+
+  const userPayload = JSON.parse(aiRequest.messages[1].content);
+  assert.equal(userPayload.currentRequest, 'latest OpenAI news today');
+  assert.equal(userPayload.marketRelatedRequest, false);
+  assert.equal(userPayload.webSearchRelatedRequest, true);
+  assert.equal(userPayload.webSearchContext.ok, true);
+  assert.equal(userPayload.webSearchContext.results[0].title, 'OpenAI shares product update');
+});
+
+test('isWebSearchRelatedRequest keeps market data on Hyperliquid but searches market news', () => {
+  assert.equal(
+    isWebSearchRelatedRequest('What is BTC price now?', { marketRelatedRequest: true }),
+    false
+  );
+  assert.equal(
+    isWebSearchRelatedRequest('latest BTC ETF news', { marketRelatedRequest: true }),
+    true
+  );
+  assert.equal(
+    isWebSearchRelatedRequest('who is the current OpenAI CEO?', { marketRelatedRequest: false }),
+    true
+  );
 });
 
 test('answerStatelessAiChat answers bare Chinese weather query with default location', async () => {
@@ -116,6 +182,7 @@ test('answerStatelessAiChat answers bare Chinese weather query with default loca
     assert.match(reply.text, /未指定城市，按默认地点 Kuala Lumpur, Malaysia 查询。/);
     assert.match(reply.text, /当前：局部多云/);
     assert.match(reply.text, /最高降雨概率 60%/);
+    assert.match(reply.text, /更新时间：2026-07-01 08:00 HKT/);
   } finally {
     if (previousDefault == null) {
       delete process.env.DEFAULT_WEATHER_LOCATION;
