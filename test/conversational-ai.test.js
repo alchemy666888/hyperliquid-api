@@ -55,20 +55,48 @@ const weatherSnapshot = {
   },
 };
 
+function googleContext(query, title = 'Search result') {
+  return {
+    ok: true,
+    source: 'google-custom-search',
+    query,
+    timestamp: '2026-07-01T00:00:00.000Z',
+    resultCount: 1,
+    results: [
+      {
+        rank: 1,
+        title,
+        link: 'https://example.com/search-result',
+        snippet: 'A concise search result snippet.',
+      },
+    ],
+  };
+}
+
 test('answerStatelessAiChat sends only current request and market context to AI', async () => {
   let aiRequest;
+  let searchedQuery;
+  const calls = [];
   const reply = await answerStatelessAiChat({
     message: 'What is BTC doing now?',
-    getSnapshot: async () => snapshot,
-    getSearch: async () => {
-      throw new Error('market data-only request should not search the web');
+    getSnapshot: async () => {
+      calls.push('snapshot');
+      return snapshot;
+    },
+    getSearch: async ({ query }) => {
+      calls.push('search');
+      searchedQuery = query;
+      return googleContext(query, 'BTC market update');
     },
     deepSeekChat: async request => {
+      calls.push('ai');
       aiRequest = request;
       return { ok: true, text: 'BTC is firm on the current snapshot.' };
     },
   });
 
+  assert.deepEqual(calls, ['search', 'snapshot', 'ai']);
+  assert.equal(searchedQuery, 'What is BTC doing now?');
   assert.equal(reply.parseMode, 'HTML');
   assert.match(reply.text, /BTC is firm/);
   assert.match(reply.text, /BTCUSDT 61,000/);
@@ -79,7 +107,7 @@ test('answerStatelessAiChat sends only current request and market context to AI'
   assert.equal(messages.length, 2);
   assert.match(messages[0].content, /stateless/);
   assert.match(messages[0].content, /daily-life topics/);
-  assert.match(messages[0].content, /Use the market context only when the request is about markets/);
+  assert.match(messages[0].content, /Use the market context only when it is present/);
   assert.match(messages[0].content, /Telegram-compatible HTML, not Markdown/);
   assert.match(messages[0].content, /Do not refer to or infer previous conversation history/);
 
@@ -87,8 +115,9 @@ test('answerStatelessAiChat sends only current request and market context to AI'
   assert.equal(userPayload.currentRequest, 'What is BTC doing now?');
   assert.equal(userPayload.marketRelatedRequest, true);
   assert.equal(userPayload.marketContext.assets[0].symbol, 'BTCUSDT');
-  assert.equal(userPayload.webSearchRelatedRequest, false);
-  assert.equal(userPayload.webSearchContext, null);
+  assert.equal(userPayload.webSearchRelatedRequest, true);
+  assert.equal(userPayload.webSearchContext.ok, true);
+  assert.equal(userPayload.webSearchContext.results[0].title, 'BTC market update');
   assert.equal(Object.hasOwn(userPayload, 'history'), false);
   assert.equal(Object.hasOwn(userPayload, 'previousMessages'), false);
 });
@@ -98,24 +127,12 @@ test('answerStatelessAiChat searches current news before asking AI to analyze it
   let aiRequest;
   const reply = await answerStatelessAiChat({
     message: 'latest OpenAI news today',
-    getSnapshot: async () => snapshot,
+    getSnapshot: async () => {
+      throw new Error('non-market news should not fetch market snapshot');
+    },
     getSearch: async ({ query }) => {
       searchedQuery = query;
-      return {
-        ok: true,
-        source: 'google-custom-search',
-        query,
-        timestamp: '2026-07-01T00:00:00.000Z',
-        resultCount: 1,
-        results: [
-          {
-            rank: 1,
-            title: 'OpenAI shares product update',
-            link: 'https://example.com/openai-update',
-            snippet: 'A concise search result snippet.',
-          },
-        ],
-      };
+      return googleContext(query, 'OpenAI shares product update');
     },
     deepSeekChat: async request => {
       aiRequest = request;
@@ -130,23 +147,24 @@ test('answerStatelessAiChat searches current news before asking AI to analyze it
   const userPayload = JSON.parse(aiRequest.messages[1].content);
   assert.equal(userPayload.currentRequest, 'latest OpenAI news today');
   assert.equal(userPayload.marketRelatedRequest, false);
+  assert.equal(userPayload.marketContext, null);
   assert.equal(userPayload.webSearchRelatedRequest, true);
   assert.equal(userPayload.webSearchContext.ok, true);
   assert.equal(userPayload.webSearchContext.results[0].title, 'OpenAI shares product update');
 });
 
-test('isWebSearchRelatedRequest keeps market data on Hyperliquid but searches market news', () => {
+test('isWebSearchRelatedRequest marks all non-empty AI chat requests as search-related', () => {
   assert.equal(
     isWebSearchRelatedRequest('What is BTC price now?', { marketRelatedRequest: true }),
+    true
+  );
+  assert.equal(
+    isWebSearchRelatedRequest('What should I cook tonight?', { marketRelatedRequest: false }),
+    true
+  );
+  assert.equal(
+    isWebSearchRelatedRequest('', { marketRelatedRequest: false }),
     false
-  );
-  assert.equal(
-    isWebSearchRelatedRequest('latest BTC ETF news', { marketRelatedRequest: true }),
-    true
-  );
-  assert.equal(
-    isWebSearchRelatedRequest('who is the current OpenAI CEO?', { marketRelatedRequest: false }),
-    true
   );
 });
 
@@ -156,6 +174,8 @@ test('answerStatelessAiChat answers bare Chinese weather query with default loca
   let weatherLocation;
   let aiCalled = false;
   let snapshotCalled = false;
+  let searchedQuery;
+  const calls = [];
 
   try {
     const reply = await answerStatelessAiChat({
@@ -164,7 +184,13 @@ test('answerStatelessAiChat answers bare Chinese weather query with default loca
         snapshotCalled = true;
         return snapshot;
       },
+      getSearch: async ({ query }) => {
+        calls.push('search');
+        searchedQuery = query;
+        throw new Error('search unavailable');
+      },
       getWeather: async ({ location }) => {
+        calls.push('weather');
         weatherLocation = location;
         return weatherSnapshot;
       },
@@ -174,6 +200,8 @@ test('answerStatelessAiChat answers bare Chinese weather query with default loca
       },
     });
 
+    assert.deepEqual(calls, ['search', 'weather']);
+    assert.equal(searchedQuery, '今天天气如何');
     assert.equal(reply.parseMode, 'HTML');
     assert.equal(weatherLocation, 'Kuala Lumpur');
     assert.equal(aiCalled, false);
@@ -194,11 +222,16 @@ test('answerStatelessAiChat answers bare Chinese weather query with default loca
 
 test('answerStatelessAiChat extracts Chinese weather city before querying', async () => {
   let weatherLocation;
+  let searchedQuery;
 
   const reply = await answerStatelessAiChat({
     message: '上海今天天气如何',
     getSnapshot: async () => {
       throw new Error('market snapshot should not be fetched for weather');
+    },
+    getSearch: async ({ query }) => {
+      searchedQuery = query;
+      return googleContext(query, 'Shanghai weather');
     },
     getWeather: async ({ location }) => {
       weatherLocation = location;
@@ -213,6 +246,7 @@ test('answerStatelessAiChat extracts Chinese weather city before querying', asyn
     },
   });
 
+  assert.equal(searchedQuery, '上海今天天气如何');
   assert.equal(weatherLocation, '上海');
   assert.match(reply.text, /Shanghai, China 的天气：/);
   assert.doesNotMatch(reply.text, /未指定城市/);
@@ -220,9 +254,18 @@ test('answerStatelessAiChat extracts Chinese weather city before querying', asyn
 
 test('answerStatelessAiChat supports daily-life chat without market footer', async () => {
   let aiRequest;
+  let snapshotCalled = false;
+  let searchedQuery;
   const reply = await answerStatelessAiChat({
     message: 'What should I cook for dinner tonight?',
-    getSnapshot: async () => snapshot,
+    getSnapshot: async () => {
+      snapshotCalled = true;
+      throw new Error('daily-life chat should not fetch market snapshot');
+    },
+    getSearch: async ({ query }) => {
+      searchedQuery = query;
+      return googleContext(query, 'Dinner ideas');
+    },
     deepSeekChat: async request => {
       aiRequest = request;
       return { ok: true, text: 'Try a quick veggie stir-fry with rice.' };
@@ -233,6 +276,8 @@ test('answerStatelessAiChat supports daily-life chat without market footer', asy
   assert.match(reply.text, /veggie stir-fry/);
   assert.doesNotMatch(reply.text, /Market context:/);
   assert.doesNotMatch(reply.text, /Informational only/);
+  assert.equal(snapshotCalled, false);
+  assert.equal(searchedQuery, 'What should I cook for dinner tonight?');
 
   const messages = aiRequest.messages;
   assert.match(messages[0].content, /daily-life topics/);
@@ -240,14 +285,19 @@ test('answerStatelessAiChat supports daily-life chat without market footer', asy
   const userPayload = JSON.parse(messages[1].content);
   assert.equal(userPayload.currentRequest, 'What should I cook for dinner tonight?');
   assert.equal(userPayload.marketRelatedRequest, false);
-  assert.equal(userPayload.marketContext.assets[0].symbol, 'BTCUSDT');
+  assert.equal(userPayload.marketContext, null);
+  assert.equal(userPayload.webSearchRelatedRequest, true);
+  assert.equal(userPayload.webSearchContext.results[0].title, 'Dinner ideas');
   assert.equal(Object.hasOwn(userPayload, 'history'), false);
 });
 
 test('answerStatelessAiChat renders safe Telegram HTML from AI replies', async () => {
   const reply = await answerStatelessAiChat({
     message: 'Give me a quick dinner idea',
-    getSnapshot: async () => snapshot,
+    getSnapshot: async () => {
+      throw new Error('non-market chat should not fetch market snapshot');
+    },
+    getSearch: async ({ query }) => googleContext(query),
     deepSeekChat: async () => ({
       ok: true,
       text: '<b>Try this</b>: tofu and rice. <script>alert("x")</script>',
@@ -263,7 +313,10 @@ test('answerStatelessAiChat renders safe Telegram HTML from AI replies', async (
 test('answerStatelessAiChat converts common Markdown formatting to Telegram HTML', async () => {
   const reply = await answerStatelessAiChat({
     message: 'Give me a short morning routine',
-    getSnapshot: async () => snapshot,
+    getSnapshot: async () => {
+      throw new Error('non-market chat should not fetch market snapshot');
+    },
+    getSearch: async ({ query }) => googleContext(query),
     deepSeekChat: async () => ({
       ok: true,
       text: '**Morning plan**: drink water, stretch, then write `top priority`.',
@@ -279,7 +332,10 @@ test('answerStatelessAiChat converts common Markdown formatting to Telegram HTML
 test('answerStatelessAiChat returns setup guidance when AI is unavailable', async () => {
   const reply = await answerStatelessAiChat({
     message: 'hello',
-    getSnapshot: async () => snapshot,
+    getSnapshot: async () => {
+      throw new Error('non-market chat should not fetch market snapshot');
+    },
+    getSearch: async ({ query }) => googleContext(query),
     deepSeekChat: async () => ({ ok: false, error: 'DeepSeek is not configured.' }),
   });
 

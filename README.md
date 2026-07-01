@@ -72,7 +72,7 @@ When `TELEGRAM_SECRET_TOKEN` is set, `/api/telegram` validates `x-telegram-bot-a
 
 ## AI Model Setup
 
-The bot uses the configured AI provider for `/condition <symbol>` classification and for normal no-command AI chat. No-command chat is stateless: each reply only uses the current user message, fresh Hyperliquid market context, and Google Search results for current/news-style questions, even though the raw communication history is persisted when PostgreSQL is configured.
+The bot uses the configured AI provider for `/condition <symbol>` classification and for normal no-command AI chat. No-command chat is stateless: each reply only uses the current user message, Google Search results, and fresh Hyperliquid market context when the message is trading-related or mentions a tracked symbol, even though the raw communication history is persisted when PostgreSQL is configured.
 
 Choose the provider with `AI_MODEL_PROVIDER`. Supported values are `DEEPSEEK` and `CLAUDE`; if this variable is omitted, the bot keeps the existing default of `DEEPSEEK`.
 
@@ -115,14 +115,14 @@ vercel env add DEFAULT_WEATHER_LOCATION
 
 Weather forecast times and Telegram timestamps are rendered in Hong Kong Time (`Asia/Hong_Kong`, `HKT`).
 
-Optional Google Custom Search variables for current events, news, recent announcements, schedules, and other changing public information:
+Optional Google Custom Search variables for no-command AI chat:
 
 ```bash
 vercel env add GOOGLE_API_KEY
 vercel env add GOOGLE_CSE_ID
 ```
 
-Market price and indicator questions still use the existing Hyperliquid snapshot instead of web search. `GOOGLE_CUSTOM_SEARCH_API_KEY` can be used instead of `GOOGLE_API_KEY`; `GOOGLE_CUSTOM_SEARCH_ENGINE_ID` or `GOOGLE_CUSTOM_SEARCH_CX` can be used instead of `GOOGLE_CSE_ID`.
+No-command AI chat always performs Google Custom Search before asking the AI to answer. Trading, price, indicator, and tracked-symbol questions also use the existing Hyperliquid snapshot as the market source of truth. `GOOGLE_CUSTOM_SEARCH_API_KEY` can be used instead of `GOOGLE_API_KEY`; `GOOGLE_CUSTOM_SEARCH_ENGINE_ID` or `GOOGLE_CUSTOM_SEARCH_CX` can be used instead of `GOOGLE_CSE_ID`.
 Set `GOOGLE_SEARCH_RESULT_LIMIT` to tune how many results are passed to the AI; the default is `5` and the maximum is `10`.
 
 `DEEPSEEK_BASE_URL` and `CLAUDE_BASE_URL` are optional when using the providers' default API endpoints. `DEEPSEEK_MODEL` and `CLAUDE_MODEL` are optional when the app default models are acceptable. Redeploy after changing environment variables:
@@ -207,7 +207,7 @@ You can talk to the bot normally without a slash command, for example:
 What is happening with BTC right now?
 ```
 
-The AI reply uses only that current request, a fresh market snapshot, and Google Search results when the request needs current web information. Previous communication history is saved to PostgreSQL when configured, but it is not considered as chat memory.
+The AI reply uses only that current request and Google Search results. A fresh Hyperliquid market snapshot is added when the request is trading-related or mentions a tracked symbol. Previous communication history is saved to PostgreSQL when configured, but it is not considered as chat memory.
 
 ```text
 /start
