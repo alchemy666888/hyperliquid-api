@@ -78,6 +78,38 @@ test('createGoogleSearchTool calls Google Custom Search and returns compact JSON
   ]);
 });
 
+test('createGoogleSearchTool rejects missing config before calling Google', async () => {
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args);
+  let fetchCalled = false;
+
+  try {
+    const tool = createGoogleSearchTool({
+      apiKey: '',
+      googleCSEId: '',
+      resultLimit: 3,
+    }, {
+      fetchImpl: async () => {
+        fetchCalled = true;
+        throw new Error('should not call Google without credentials');
+      },
+    });
+
+    await assert.rejects(
+      () => tool.invoke('latest OpenAI news'),
+      /Missing GOOGLE_API_KEY, GOOGLE_CSE_ID/
+    );
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.equal(fetchCalled, false);
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0][0], 'Google Custom Search request skipped: missing configuration');
+  assert.deepEqual(warnings[0][1].missing, ['GOOGLE_API_KEY', 'GOOGLE_CSE_ID']);
+});
+
 test('createGoogleSearchTool logs sanitized Google API error details', async () => {
   const warnings = [];
   const originalWarn = console.warn;
@@ -125,6 +157,8 @@ test('createGoogleSearchTool logs sanitized Google API error details', async () 
   assert.equal(details.status, 403);
   assert.equal(details.statusText, 'Forbidden');
   assert.equal(details.apiKeyConfigured, true);
+  assert.equal(details.requestHasApiKeyParam, true);
+  assert.equal(details.requestHasCSEIdParam, true);
   assert.equal(details.googleCSEId, 'sear...e-id');
   assert.equal(details.googleError.status, 'PERMISSION_DENIED');
   assert.equal(details.googleError.errors[0].reason, 'accessNotConfigured');
