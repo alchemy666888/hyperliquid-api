@@ -1,24 +1,24 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  createGoogleSearchTool,
-  getGoogleSearchStatus,
-  parseGoogleSearchOutput,
-  searchGoogleForContext,
+  createSearchTool,
+  getSearchStatus,
+  parseSearchOutput,
+  searchForContext,
 } from '../lib/search.js';
 
-test('getGoogleSearchStatus reports missing Google Custom Search variables safely', () => {
-  const status = getGoogleSearchStatus({});
+test('getSearchStatus reports missing SearchApi.io variables safely', () => {
+  const status = getSearchStatus({});
 
-  assert.equal(status.provider, 'GOOGLE_CUSTOM_SEARCH');
+  assert.equal(status.provider, 'SEARCHAPI_IO');
   assert.equal(status.configured, false);
   assert.equal(status.apiKeyConfigured, false);
-  assert.equal(status.cseIdConfigured, false);
-  assert.deepEqual(status.missing, ['GOOGLE_API_KEY', 'GOOGLE_CSE_ID']);
+  assert.equal(status.engine, 'google');
+  assert.deepEqual(status.missing, ['SEARCHAPI_API_KEY']);
 });
 
-test('parseGoogleSearchOutput normalizes Google Custom Search JSON', () => {
-  const results = parseGoogleSearchOutput(JSON.stringify([
+test('parseSearchOutput normalizes SearchApi.io JSON', () => {
+  const results = parseSearchOutput(JSON.stringify([
     {
       title: ' First result ',
       link: ' https://example.com/first ',
@@ -41,19 +41,21 @@ test('parseGoogleSearchOutput normalizes Google Custom Search JSON', () => {
   ]);
 });
 
-test('createGoogleSearchTool calls Google Custom Search and returns compact JSON', async () => {
+test('createSearchTool calls SearchApi.io and returns compact organic results JSON', async () => {
   let requestedUrl;
-  const tool = createGoogleSearchTool({
-    apiKey: 'google-key',
-    googleCSEId: 'search-engine-id',
+  let requestOptions;
+  const tool = createSearchTool({
+    apiKey: 'searchapi-key',
+    engine: 'google',
     resultLimit: 3,
   }, {
-    fetchImpl: async url => {
+    fetchImpl: async (url, options) => {
       requestedUrl = url;
+      requestOptions = options;
       return {
         ok: true,
         json: async () => ({
-          items: [
+          organic_results: [
             {
               title: 'OpenAI announces update',
               link: 'https://example.com/openai-update',
@@ -68,7 +70,8 @@ test('createGoogleSearchTool calls Google Custom Search and returns compact JSON
   const output = await tool.invoke('latest OpenAI news');
   const results = JSON.parse(output);
 
-  assert.equal(requestedUrl.href, 'https://www.googleapis.com/customsearch/v1?key=google-key&cx=search-engine-id&q=latest+OpenAI+news&num=3');
+  assert.equal(requestedUrl.href, 'https://www.searchapi.io/api/v1/search?engine=google&q=latest+OpenAI+news');
+  assert.equal(requestOptions.headers.Authorization, 'Bearer searchapi-key');
   assert.deepEqual(results, [
     {
       title: 'OpenAI announces update',
@@ -78,27 +81,27 @@ test('createGoogleSearchTool calls Google Custom Search and returns compact JSON
   ]);
 });
 
-test('createGoogleSearchTool rejects missing config before calling Google', async () => {
+test('createSearchTool rejects missing config before calling SearchApi.io', async () => {
   const warnings = [];
   const originalWarn = console.warn;
   console.warn = (...args) => warnings.push(args);
   let fetchCalled = false;
 
   try {
-    const tool = createGoogleSearchTool({
+    const tool = createSearchTool({
       apiKey: '',
-      googleCSEId: '',
+      engine: 'google',
       resultLimit: 3,
     }, {
       fetchImpl: async () => {
         fetchCalled = true;
-        throw new Error('should not call Google without credentials');
+        throw new Error('should not call SearchApi.io without credentials');
       },
     });
 
     await assert.rejects(
       () => tool.invoke('latest OpenAI news'),
-      /Missing GOOGLE_API_KEY, GOOGLE_CSE_ID/
+      /Missing SEARCHAPI_API_KEY/
     );
   } finally {
     console.warn = originalWarn;
@@ -106,37 +109,30 @@ test('createGoogleSearchTool rejects missing config before calling Google', asyn
 
   assert.equal(fetchCalled, false);
   assert.equal(warnings.length, 1);
-  assert.equal(warnings[0][0], 'Google Custom Search request skipped: missing configuration');
-  assert.deepEqual(warnings[0][1].missing, ['GOOGLE_API_KEY', 'GOOGLE_CSE_ID']);
+  assert.equal(warnings[0][0], 'SearchApi.io request skipped: missing configuration');
+  assert.deepEqual(warnings[0][1].missing, ['SEARCHAPI_API_KEY']);
 });
 
-test('createGoogleSearchTool logs sanitized Google API error details', async () => {
+test('createSearchTool logs sanitized SearchApi.io error details', async () => {
   const warnings = [];
   const originalWarn = console.warn;
   console.warn = (...args) => warnings.push(args);
 
   try {
-    const tool = createGoogleSearchTool({
-      apiKey: 'google-key',
-      googleCSEId: 'search-engine-id',
+    const tool = createSearchTool({
+      apiKey: 'searchapi-key',
+      engine: 'google',
       resultLimit: 3,
     }, {
       fetchImpl: async () => ({
         ok: false,
-        status: 403,
-        statusText: 'Forbidden',
+        status: 401,
+        statusText: 'Unauthorized',
         text: async () => JSON.stringify({
           error: {
-            code: 403,
-            message: 'Custom Search API has not been used in project.',
-            status: 'PERMISSION_DENIED',
-            errors: [
-              {
-                message: 'Custom Search API has not been used in project.',
-                domain: 'usageLimits',
-                reason: 'accessNotConfigured',
-              },
-            ],
+            status: 'UNAUTHENTICATED',
+            message: 'Invalid API key.',
+            reason: 'invalid_api_key',
           },
         }),
       }),
@@ -144,31 +140,30 @@ test('createGoogleSearchTool logs sanitized Google API error details', async () 
 
     await assert.rejects(
       () => tool.invoke('secret user query'),
-      /HTTP 403\. PERMISSION_DENIED \| Custom Search API has not been used/
+      /HTTP 401\. UNAUTHENTICATED \| invalid_api_key \| Invalid API key/
     );
   } finally {
     console.warn = originalWarn;
   }
 
   assert.equal(warnings.length, 1);
-  assert.equal(warnings[0][0], 'Google Custom Search request failed');
+  assert.equal(warnings[0][0], 'SearchApi.io request failed');
 
   const details = warnings[0][1];
-  assert.equal(details.status, 403);
-  assert.equal(details.statusText, 'Forbidden');
+  assert.equal(details.status, 401);
+  assert.equal(details.statusText, 'Unauthorized');
   assert.equal(details.apiKeyConfigured, true);
-  assert.equal(details.requestHasApiKeyParam, true);
-  assert.equal(details.requestHasCSEIdParam, true);
-  assert.equal(details.googleCSEId, 'sear...e-id');
-  assert.equal(details.googleError.status, 'PERMISSION_DENIED');
-  assert.equal(details.googleError.errors[0].reason, 'accessNotConfigured');
-  assert.doesNotMatch(JSON.stringify(details), /google-key/);
+  assert.equal(details.requestHasAuthorizationHeader, true);
+  assert.equal(details.engine, 'google');
+  assert.equal(details.searchApiError.status, 'UNAUTHENTICATED');
+  assert.equal(details.searchApiError.reason, 'invalid_api_key');
+  assert.doesNotMatch(JSON.stringify(details), /searchapi-key/);
   assert.doesNotMatch(JSON.stringify(details), /secret user query/);
 });
 
-test('searchGoogleForContext invokes an injected Google search tool', async () => {
+test('searchForContext invokes an injected SearchApi.io-compatible search tool', async () => {
   let searchedQuery;
-  const context = await searchGoogleForContext({
+  const context = await searchForContext({
     query: '  latest OpenAI news  ',
     env: {},
     now: new Date('2026-07-01T00:00:00.000Z'),
@@ -188,14 +183,14 @@ test('searchGoogleForContext invokes an injected Google search tool', async () =
 
   assert.equal(searchedQuery, 'latest OpenAI news');
   assert.equal(context.ok, true);
-  assert.equal(context.source, 'google-custom-search');
+  assert.equal(context.source, 'searchapi-io');
   assert.equal(context.timestamp, '2026-07-01T00:00:00.000Z');
   assert.equal(context.resultCount, 1);
   assert.equal(context.results[0].title, 'OpenAI announces update');
 });
 
-test('searchGoogleForContext returns setup guidance when Google search is not configured', async () => {
-  const context = await searchGoogleForContext({
+test('searchForContext returns setup guidance when SearchApi.io is not configured', async () => {
+  const context = await searchForContext({
     query: 'latest AI news',
     env: {},
     now: new Date('2026-07-01T00:00:00.000Z'),
@@ -203,6 +198,6 @@ test('searchGoogleForContext returns setup guidance when Google search is not co
 
   assert.equal(context.ok, false);
   assert.match(context.error, /not configured/);
-  assert.deepEqual(context.missing, ['GOOGLE_API_KEY', 'GOOGLE_CSE_ID']);
+  assert.deepEqual(context.missing, ['SEARCHAPI_API_KEY']);
   assert.deepEqual(context.results, []);
 });

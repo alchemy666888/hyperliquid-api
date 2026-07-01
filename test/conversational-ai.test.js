@@ -55,10 +55,10 @@ const weatherSnapshot = {
   },
 };
 
-function googleContext(query, title = 'Search result') {
+function searchContext(query, title = 'Search result') {
   return {
     ok: true,
-    source: 'google-custom-search',
+    source: 'searchapi-io',
     query,
     timestamp: '2026-07-01T00:00:00.000Z',
     resultCount: 1,
@@ -86,7 +86,7 @@ test('answerStatelessAiChat sends only current request and market context to AI'
     getSearch: async ({ query }) => {
       calls.push('search');
       searchedQuery = query;
-      return googleContext(query, 'BTC market update');
+      return searchContext(query, 'BTC market update');
     },
     deepSeekChat: async request => {
       calls.push('ai');
@@ -132,7 +132,7 @@ test('answerStatelessAiChat searches current news before asking AI to analyze it
     },
     getSearch: async ({ query }) => {
       searchedQuery = query;
-      return googleContext(query, 'OpenAI shares product update');
+      return searchContext(query, 'OpenAI shares product update');
     },
     deepSeekChat: async request => {
       aiRequest = request;
@@ -231,7 +231,7 @@ test('answerStatelessAiChat extracts Chinese weather city before querying', asyn
     },
     getSearch: async ({ query }) => {
       searchedQuery = query;
-      return googleContext(query, 'Shanghai weather');
+      return searchContext(query, 'Shanghai weather');
     },
     getWeather: async ({ location }) => {
       weatherLocation = location;
@@ -264,7 +264,7 @@ test('answerStatelessAiChat supports daily-life chat without market footer', asy
     },
     getSearch: async ({ query }) => {
       searchedQuery = query;
-      return googleContext(query, 'Dinner ideas');
+      return searchContext(query, 'Dinner ideas');
     },
     deepSeekChat: async request => {
       aiRequest = request;
@@ -297,7 +297,7 @@ test('answerStatelessAiChat renders safe Telegram HTML from AI replies', async (
     getSnapshot: async () => {
       throw new Error('non-market chat should not fetch market snapshot');
     },
-    getSearch: async ({ query }) => googleContext(query),
+    getSearch: async ({ query }) => searchContext(query),
     deepSeekChat: async () => ({
       ok: true,
       text: '<b>Try this</b>: tofu and rice. <script>alert("x")</script>',
@@ -316,7 +316,7 @@ test('answerStatelessAiChat converts common Markdown formatting to Telegram HTML
     getSnapshot: async () => {
       throw new Error('non-market chat should not fetch market snapshot');
     },
-    getSearch: async ({ query }) => googleContext(query),
+    getSearch: async ({ query }) => searchContext(query),
     deepSeekChat: async () => ({
       ok: true,
       text: '**Morning plan**: drink water, stretch, then write `top priority`.',
@@ -335,7 +335,7 @@ test('answerStatelessAiChat returns setup guidance when AI is unavailable', asyn
     getSnapshot: async () => {
       throw new Error('non-market chat should not fetch market snapshot');
     },
-    getSearch: async ({ query }) => googleContext(query),
+    getSearch: async ({ query }) => searchContext(query),
     deepSeekChat: async () => ({ ok: false, error: 'DeepSeek is not configured.' }),
   });
 

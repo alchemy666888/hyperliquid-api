@@ -14,7 +14,7 @@ import {
 import { classifyAssetDecisionTreeCondition } from '../lib/ai-decision-tree-alerts.js';
 import { answerStatelessAiChat } from '../lib/conversational-ai.js';
 import { getAiStatus } from '../lib/ai-client.js';
-import { getGoogleSearchStatus } from '../lib/search.js';
+import { getSearchStatus } from '../lib/search.js';
 import { sendTelegramMessage } from '../lib/telegram-client.js';
 import {
   formatTelegramDate,
@@ -597,7 +597,7 @@ export default async function handler(req, res) {
         postgres: getPostgresStatus(),
         ai: aiStatus,
         deepseek: aiStatus.deepseek,
-        search: getGoogleSearchStatus(),
+        search: getSearchStatus(),
       },
     });
     return;
