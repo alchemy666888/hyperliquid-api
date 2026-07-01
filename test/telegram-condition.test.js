@@ -23,6 +23,51 @@ const alert = {
   rawTree: 'MU above $1,164 and holds? -> Long toward $1,198.',
 };
 
+test('/treealert analyzes request content before saving alerts', async () => {
+  const body = 'MU breaks and sustains 1,200? -> Long continuation.';
+  const rule = {
+    symbol: 'MU',
+    conditionText: 'MU breaks and sustains 1,200?',
+    conditionKind: 'above',
+    lowerPrice: 1200,
+    upperPrice: null,
+    actionText: 'Long continuation.',
+  };
+
+  const reply = await buildReply(`/treealert ${body}`, 123, {
+    parseDecisionTreeAlertTextWithAi: async (input, options) => {
+      assert.equal(input, body);
+      assert.ok(options.assets.some(asset => asset.label === 'MU'));
+      return {
+        source: 'ai',
+        aiAttempted: true,
+        aiNeeded: true,
+        errors: [],
+        rules: [rule],
+      };
+    },
+    saveDecisionTreeAlerts: async (payload) => {
+      assert.equal(payload.chatId, 123);
+      assert.equal(payload.rawTree, body);
+      assert.deepEqual(payload.rules, [rule]);
+      return [
+        {
+          ...rule,
+          id: 99,
+          chatId: '123',
+          rawTree: body,
+          active: true,
+          expiresAt: '2026-07-02T00:00:00.000Z',
+        },
+      ];
+    },
+  });
+
+  assert.match(reply.text, /<b>Saved 1 decision-tree alert for MU\.<\/b>/);
+  assert.match(reply.text, /MU breaks and sustains 1,200\?/);
+  assert.match(reply.text, /Analyzed with AI first and saved as trigger-ready alerts\./);
+});
+
 test('/condition returns unknown symbol message', async () => {
   const reply = await buildReply('/condition DOGE', 123, {
     getHyperliquidSnapshot: async () => snapshot,

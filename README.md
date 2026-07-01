@@ -222,7 +222,7 @@ The AI reply uses only that current request and SearchApi.io web results. A fres
 
 ### Decision-tree alerts
 
-Use `/treealert` followed by a pasted decision tree to save price alerts for the current Telegram chat:
+Use `/treealert` followed by a pasted decision tree. The bot sends the content to the configured AI provider first, normalizes it into trigger-ready price alerts, then saves those alerts for the current Telegram chat:
 
 ```text
 /treealert
@@ -242,7 +242,7 @@ MU between $1,126 and $1,164?
 → No trade.
 ```
 
-Supported condition styles are `above`, `below`/`closes below`, `between`, and range conditions such as `holds $1,126–$1,116` or `rejects $1,155–$1,164`.
+The AI analysis stores supported trigger styles as `above`, `below`/`closes below`, `between`, and range conditions such as `holds $1,126–$1,116` or `rejects $1,155–$1,164`. If AI analysis is unavailable, the bot falls back to deterministic parsing only for any rules it can safely recognize.
 
 Alerts expire 24 hours after they are saved, or sooner when cancelled with `/clearalerts [symbol]`. Active alerts are scoped to the Telegram chat that created them; `/alerts`, `/clearalerts`, and alert notifications only use that chat's saved alerts.
 

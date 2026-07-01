@@ -198,7 +198,7 @@ function helpMessage() {
     ['Chat', 'Send a normal message to ask AI about the current market. No command needed.'],
     ['/prices', 'Show all tracked prices and regimes'],
     ['/asset BTCUSDT', 'Show 4H indicators for one asset'],
-    ['/treealert', 'Save pasted decision-tree alerts'],
+    ['/treealert', 'AI-analyze and save pasted decision-tree alerts'],
     ['/condition MU', 'Classify current saved tree condition'],
     ['/alerts', 'List active decision-tree alerts'],
     ['/clearalerts [MU]', 'Manually cancel active decision-tree alerts'],
@@ -247,6 +247,7 @@ function treeAlertUsage() {
     ['Command', '/treealert'],
     ['Condition', 'MU above $1,164 and holds?'],
     ['Action', '-> Long toward $1,198'],
+    ['AI', 'Pasted content is analyzed before trigger-ready alerts are saved.'],
     ['Supported', 'above, below/closes below, between, holds/rejects with a price range'],
     ['Expiry', 'Alerts expire after 24 hours or when cancelled with /clearalerts.'],
   ]);
@@ -297,14 +298,19 @@ function listAlertsMessage(alerts) {
   ]);
 }
 
-async function setupTreeAlerts(body, chatId) {
+async function setupTreeAlerts(body, chatId, deps = {}) {
   if (!body) return treeAlertUsage();
   if (!getPostgresStatus().configured) return postgresRequiredMessage();
 
-  const parsed = await parseDecisionTreeAlertTextWithAi(body, { assets: ASSETS });
+  const parseAlerts = deps.parseDecisionTreeAlertTextWithAi ?? parseDecisionTreeAlertTextWithAi;
+  const parsed = await parseAlerts(body, {
+    assets: ASSETS,
+    aiRequest: deps.aiJson,
+    deepSeekRequest: deps.deepSeekJson,
+  });
   if (parsed.errors.length && !parsed.rules.length) {
     const rows = parsed.errors.map((error, index) => [`Error ${index + 1}`, error]);
-    if (parsed.aiMessage) rows.push([parsed.aiUnavailable ? 'AI unavailable' : 'AI parser', parsed.aiMessage]);
+    if (parsed.aiMessage) rows.push([parsed.aiUnavailable ? 'AI unavailable' : 'AI analysis', parsed.aiMessage]);
     return telegramTableMessage('Could not save decision-tree alerts', [
       ...rows,
       { separator: true },
@@ -314,7 +320,8 @@ async function setupTreeAlerts(body, chatId) {
 
   if (!parsed.rules.length) return treeAlertUsage();
 
-  const alerts = await saveDecisionTreeAlerts({
+  const saveAlerts = deps.saveDecisionTreeAlerts ?? saveDecisionTreeAlerts;
+  const alerts = await saveAlerts({
     chatId,
     rawTree: body,
     rules: parsed.rules,
@@ -324,7 +331,7 @@ async function setupTreeAlerts(body, chatId) {
   const message = savedAlertsMessage(alerts);
   if (parsed.aiMessage || parsed.source === 'ai') {
     const note = parsed.source === 'ai'
-      ? 'Parsed with AI after deterministic parsing needed help.'
+      ? 'Analyzed with AI first and saved as trigger-ready alerts.'
       : parsed.aiMessage;
     return { ...message, text: `${message.text}\n\n<i>${note}</i>` };
   }
@@ -504,7 +511,7 @@ export async function buildReply(text, chatId, deps = {}) {
   }
 
   if (command === '/treealert' || command === '/decisiontree') {
-    return setupTreeAlerts(body, chatId);
+    return setupTreeAlerts(body, chatId, deps);
   }
 
   if (command === '/alerts') {

@@ -10,6 +10,29 @@ import {
 
 const ASSETS = [{ label: 'MU', coin: 'xyz:MU' }];
 
+function restoreEnv(name, value) {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+}
+
+function setDeepSeekTestEnv(apiKey = 'test-key') {
+  const previousProvider = process.env.AI_MODEL_PROVIDER;
+  const previousKey = process.env.DEEPSEEK_API_KEY;
+  process.env.AI_MODEL_PROVIDER = 'DEEPSEEK';
+  if (apiKey == null) {
+    delete process.env.DEEPSEEK_API_KEY;
+  } else {
+    process.env.DEEPSEEK_API_KEY = apiKey;
+  }
+  return () => {
+    restoreEnv('AI_MODEL_PROVIDER', previousProvider);
+    restoreEnv('DEEPSEEK_API_KEY', previousKey);
+  };
+}
+
 const MU_TREE = `
 MU above $1,164 and holds?
 → Long toward $1,198, then $1,220–$1,228, then $1,249–$1,255.
@@ -82,66 +105,116 @@ test('formats alert summaries with optional expiration metadata', () => {
   assert.doesNotMatch(formatDecisionTreeRuleSummary({ ...rules[0], expiresAt }), /expires/);
 });
 
-test('AI parser extracts rules when deterministic parser cannot preserve semantic intent', async () => {
-  process.env.DEEPSEEK_API_KEY = 'test-key';
-  const parsed = await parseDecisionTreeAlertTextWithAi('MU breaks and sustains 1,200? -> Long continuation.', {
-    assets: ASSETS,
-    deepSeekRequest: async () => ({
-      ok: true,
-      json: {
-        rules: [
-          {
-            symbol: 'MU',
-            conditionText: 'MU breaks and sustains 1,200?',
-            conditionKind: 'above',
-            lowerPrice: 1200,
-            upperPrice: null,
-            actionText: 'Long continuation.',
-          },
-        ],
-      },
-    }),
-  });
+test('AI parser analyzes supported alert content before falling back to deterministic parsing', async () => {
+  const restore = setDeepSeekTestEnv();
+  let request;
 
-  assert.equal(parsed.source, 'ai');
-  assert.equal(parsed.aiAttempted, true);
-  assert.deepEqual(parsed.errors, []);
-  assert.equal(parsed.rules.length, 1);
-  assert.equal(parsed.rules[0].conditionKind, 'above');
-  assert.equal(parsed.rules[0].lowerPrice, 1200);
-  delete process.env.DEEPSEEK_API_KEY;
+  try {
+    const parsed = await parseDecisionTreeAlertTextWithAi(MU_TREE, {
+      assets: ASSETS,
+      deepSeekRequest: async (payload) => {
+        request = payload;
+        return {
+          ok: true,
+          json: {
+            rules: [
+              {
+                symbol: 'MU',
+                conditionText: 'MU above $1,164 and holds?',
+                conditionKind: 'above',
+                lowerPrice: null,
+                upperPrice: 1164,
+                actionText: 'Long toward $1,198.',
+              },
+            ],
+          },
+        };
+      },
+    });
+
+    assert.equal(parsed.source, 'ai');
+    assert.equal(parsed.aiAttempted, true);
+    assert.deepEqual(parsed.errors, []);
+    assert.equal(parsed.rules.length, 1);
+    assert.equal(parsed.rules[0].lowerPrice, 1164);
+    assert.match(request.messages[0].content, /Analyze decision-tree trading alert text/);
+    assert.match(request.messages[1].content, /Alert text:\n/);
+    assert.match(request.messages[1].content, /MU above \$1,164 and holds\?/);
+  } finally {
+    restore();
+  }
+});
+
+test('AI parser extracts rules when deterministic parser cannot preserve semantic intent', async () => {
+  const restore = setDeepSeekTestEnv();
+  try {
+    const parsed = await parseDecisionTreeAlertTextWithAi('MU breaks and sustains 1,200? -> Long continuation.', {
+      assets: ASSETS,
+      deepSeekRequest: async () => ({
+        ok: true,
+        json: {
+          rules: [
+            {
+              symbol: 'MU',
+              conditionText: 'MU breaks and sustains 1,200?',
+              conditionKind: 'above',
+              lowerPrice: 1200,
+              upperPrice: null,
+              actionText: 'Long continuation.',
+            },
+          ],
+        },
+      }),
+    });
+
+    assert.equal(parsed.source, 'ai');
+    assert.equal(parsed.aiAttempted, true);
+    assert.deepEqual(parsed.errors, []);
+    assert.equal(parsed.rules.length, 1);
+    assert.equal(parsed.rules[0].conditionKind, 'above');
+    assert.equal(parsed.rules[0].lowerPrice, 1200);
+  } finally {
+    restore();
+  }
 });
 
 test('AI parser falls back when DeepSeek API key is missing', async () => {
-  delete process.env.DEEPSEEK_API_KEY;
-  const parsed = await parseDecisionTreeAlertTextWithAi('MU breaks and sustains 1,200? -> Long continuation.', {
-    assets: ASSETS,
-    deepSeekRequest: async () => {
-      throw new Error('should not call DeepSeek without a key');
-    },
-  });
+  const restore = setDeepSeekTestEnv(null);
+  try {
+    const parsed = await parseDecisionTreeAlertTextWithAi('MU breaks and sustains 1,200? -> Long continuation.', {
+      assets: ASSETS,
+      deepSeekRequest: async () => {
+        throw new Error('should not call DeepSeek without a key');
+      },
+    });
 
-  assert.equal(parsed.source, 'deterministic');
-  assert.equal(parsed.aiAttempted, false);
-  assert.equal(parsed.aiNeeded, true);
-  assert.equal(parsed.aiUnavailable, true);
-  assert.match(parsed.aiMessage, /DEEPSEEK_API_KEY/);
-  assert.equal(parsed.rules.length, 0);
-  assert.ok(parsed.errors.length > 0);
+    assert.equal(parsed.source, 'deterministic');
+    assert.equal(parsed.aiAttempted, false);
+    assert.equal(parsed.aiNeeded, true);
+    assert.equal(parsed.aiUnavailable, true);
+    assert.match(parsed.aiMessage, /DEEPSEEK_API_KEY/);
+    assert.equal(parsed.rules.length, 0);
+    assert.ok(parsed.errors.length > 0);
+  } finally {
+    restore();
+  }
 });
 
 test('AI parser safely handles malformed AI JSON shape and keeps deterministic result', async () => {
-  process.env.DEEPSEEK_API_KEY = 'test-key';
-  const parsed = await parseDecisionTreeAlertTextWithAi('MU breaks and sustains 1,200? -> Long continuation.', {
-    assets: ASSETS,
-    deepSeekRequest: async () => ({ ok: true, json: { rules: [{ symbol: 'MU', conditionKind: 'sideways' }] } }),
-  });
+  const restore = setDeepSeekTestEnv();
+  try {
+    const parsed = await parseDecisionTreeAlertTextWithAi('MU breaks and sustains 1,200? -> Long continuation.', {
+      assets: ASSETS,
+      deepSeekRequest: async () => ({ ok: true, json: { rules: [{ symbol: 'MU', conditionKind: 'sideways' }] } }),
+    });
 
-  assert.equal(parsed.source, 'deterministic');
-  assert.equal(parsed.aiAttempted, true);
-  assert.match(parsed.aiMessage, /no valid rules/);
-  assert.equal(parsed.rules.length, 0);
-  delete process.env.DEEPSEEK_API_KEY;
+    assert.equal(parsed.source, 'deterministic');
+    assert.equal(parsed.aiAttempted, true);
+    assert.match(parsed.aiMessage, /no valid trigger rules/);
+    assert.equal(parsed.rules.length, 0);
+  } finally {
+    restore();
+  }
 });
 
 test('trigger transitions only fire when a rule moves from inactive to matched', () => {
