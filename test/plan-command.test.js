@@ -449,6 +449,63 @@ test('planStatusCommand reports the latest symbol job progress', async () => {
   assert.match(reply.text, /Running: Fact check \(step 2\/6\)/);
 });
 
+test('planStatusCommand warns when collect has waited too long for the scheduler', async () => {
+  const reply = await planStatusCommand({
+    args: ['SPCX'],
+    chatId: 123,
+    deps: {
+      now: new Date('2026-07-02T11:44:00.000Z'),
+      getPostgresStatus: () => ({ configured: true }),
+      ensurePlanJobsSchema: async () => true,
+      listPlanJobs: async () => [
+        {
+          id: 11,
+          symbol: 'SPCX',
+          resolvedSymbol: 'SPCX',
+          alertable: true,
+          direction: 'both',
+          horizon: '1-4w',
+          stage: 'collect',
+          status: 'pending',
+          createdAt: '2026-07-02T11:23:00.000Z',
+          updatedAt: '2026-07-02T11:23:00.000Z',
+        },
+      ],
+    },
+  });
+
+  assert.match(reply.text, /No \/plan scheduler tick has picked this up for 21 minutes/);
+  assert.match(reply.text, /npm run plan-scheduler-once/);
+});
+
+test('planStatusCommand does not warn for a fresh collect job', async () => {
+  const reply = await planStatusCommand({
+    args: ['SPCX'],
+    chatId: 123,
+    deps: {
+      now: new Date('2026-07-02T11:24:00.000Z'),
+      getPostgresStatus: () => ({ configured: true }),
+      ensurePlanJobsSchema: async () => true,
+      listPlanJobs: async () => [
+        {
+          id: 11,
+          symbol: 'SPCX',
+          resolvedSymbol: 'SPCX',
+          alertable: true,
+          direction: 'both',
+          horizon: '1-4w',
+          stage: 'collect',
+          status: 'pending',
+          createdAt: '2026-07-02T11:23:00.000Z',
+          updatedAt: '2026-07-02T11:23:00.000Z',
+        },
+      ],
+    },
+  });
+
+  assert.doesNotMatch(reply.text, /No \/plan scheduler tick/);
+});
+
 test('planStatusCommand lists recent chat jobs when no symbol is supplied', async () => {
   let query;
   const reply = await planStatusCommand({

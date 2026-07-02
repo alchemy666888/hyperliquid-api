@@ -8,6 +8,7 @@
     "test": "node --test",
     "alert-scheduler": "node scripts/alert-scheduler.js",
     "plan-scheduler": "node scripts/plan-scheduler.js",
+    "plan-scheduler-once": "node scripts/plan-scheduler.js --once",
     "deploy": "vercel deploy --prod"
   },
   "keywords": [

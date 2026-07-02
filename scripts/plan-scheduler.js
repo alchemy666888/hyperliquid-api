@@ -161,6 +161,11 @@ function stop(signal) {
 
 async function start() {
   const intervalMs = readPlanSchedulerIntervalMs();
+  if (process.argv.includes('--once')) {
+    await runOnce();
+    return;
+  }
+
   process.once('SIGINT', () => stop('SIGINT'));
   process.once('SIGTERM', () => stop('SIGTERM'));
 
