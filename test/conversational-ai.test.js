@@ -106,9 +106,10 @@ test('answerStatelessAiChat sends only current request and market context to AI'
   });
   assert.equal(reply.parseMode, 'HTML');
   assert.match(reply.text, /BTC is firm/);
-  assert.match(reply.text, /BTCUSDT 61,000/);
-  assert.match(reply.text, /Updated: 2026-06-30 08:00 HKT/);
-  assert.match(reply.text, /Informational only/);
+  assert.doesNotMatch(reply.text, /Market context:/);
+  assert.doesNotMatch(reply.text, /BTCUSDT 61,000/);
+  assert.doesNotMatch(reply.text, /Updated: 2026-06-30 08:00 HKT/);
+  assert.doesNotMatch(reply.text, /Informational only/);
 
   const messages = aiRequest.messages;
   assert.equal(messages.length, 2);
