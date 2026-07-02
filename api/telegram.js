@@ -13,7 +13,7 @@ import {
 } from '../lib/decision-tree-alerts.js';
 import { classifyAssetDecisionTreeCondition } from '../lib/ai-decision-tree-alerts.js';
 import { answerResearchChat, answerStatelessAiChat } from '../lib/conversational-ai.js';
-import { runPlanCommand } from '../lib/plan-command.js';
+import { enqueuePlanJob } from '../lib/plan-command.js';
 import { getAiStatus } from '../lib/ai-client.js';
 import { getSearchStatus } from '../lib/search.js';
 import { sendTelegramMessage } from '../lib/telegram-client.js';
@@ -200,7 +200,7 @@ function helpMessage() {
     ['/prices', 'Show all tracked prices and regimes'],
     ['/asset BTCUSDT', 'Show 4H indicators for one asset'],
     ['/rsh BTC latest catalysts', 'Research fresh market/news context'],
-    ['/plan MU long 2w', 'Run full swing workflow, reply a plan, set alerts'],
+    ['/plan MU long 2w', 'Queue full swing workflow; plan is pushed here shortly'],
     ['/treealert', 'AI-analyze and save pasted decision-tree alerts'],
     ['/condition MU', 'Classify current saved tree condition'],
     ['/alerts', 'List active decision-tree alerts'],
@@ -526,7 +526,7 @@ export async function buildReply(text, chatId, deps = {}) {
   }
 
   if (command === '/plan') {
-    return (deps.runPlanCommand ?? runPlanCommand)({ symbolInput: args[0], args, body, chatId, deps });
+    return (deps.enqueuePlanJob ?? enqueuePlanJob)({ symbolInput: args[0], args, body, chatId, deps });
   }
 
   if (command === '/treealert' || command === '/decisiontree') {

@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   assemblePlan,
+  enqueuePlanJob,
   formatPlanReply,
   parsePlanArgs,
   resolvePlanSymbol,
-  runPlanCommand,
   runResearchStages,
 } from '../lib/plan-command.js';
 
@@ -309,177 +309,100 @@ test('formatPlanReply truncates oversized Telegram replies', () => {
   assert.match(reply.text, /\[Reply shortened for Telegram\.\]/);
 });
 
-test('runPlanCommand returns usage when no symbol is supplied', async () => {
-  const reply = await runPlanCommand({ args: [], chatId: 123 });
+test('enqueuePlanJob returns usage when no symbol is supplied', async () => {
+  const reply = await enqueuePlanJob({ args: [], chatId: 123 });
 
   assert.match(reply.text, /<b>SwingScope plan usage<\/b>/);
   assert.match(reply.text, /\/plan &lt;symbol&gt; \[long\|short\|both\] \[horizon\]/);
   assert.match(reply.text, /BTCUSDT/);
 });
 
-test('runPlanCommand saves normalized alerts for tracked symbols', async () => {
-  let savedPayload;
-  const reply = await runPlanCommand({
+test('enqueuePlanJob refuses to run without PostgreSQL persistence', async () => {
+  let inserted = false;
+  const reply = await enqueuePlanJob({
     args: ['MU', 'long', '2w'],
     chatId: 123,
     deps: {
-      getPostgresStatus: () => ({ configured: true }),
-      runResearchStages: async () => ({
-        ok: true,
-        symbol: 'MU',
-        resolvedSymbol: 'MU',
-        alertable: true,
-        direction: 'long',
-        horizon: '2w',
-        snapshot: { price: 100, indicators: {} },
-        facts: 'facts',
-        inference: 'inference',
-        notes: [],
-      }),
-      assemblePlan: async () => ({
-        ok: true,
-        plan: {
-          analysisSummary: 'Summary.',
-          long: { entries: [101], stop: 95, targets: [110], rationale: 'Upside.' },
-          conditions: [
-            { kind: 'above', price: 101, actionText: 'Watch breakout.' },
-            { kind: 'rsi_below', threshold: 30, actionText: 'Watch reset.' },
-          ],
-        },
-      }),
-      saveDecisionTreeAlerts: async (payload) => {
-        savedPayload = payload;
-        return payload.rules.map((rule, index) => ({ ...rule, id: index + 1, chatId: '123' }));
+      getPostgresStatus: () => ({ configured: false, missing: ['POSTGRES_URL'] }),
+      insertPlanJob: async () => {
+        inserted = true;
       },
     },
   });
 
-  assert.equal(savedPayload.chatId, 123);
-  assert.match(savedPayload.rawTree, /Long/);
-  assert.deepEqual(savedPayload.rules.map(rule => rule.conditionKind), ['above', 'rsi_below']);
-  assert.match(reply.text, /Alerts saved: 2 for MU/);
+  assert.equal(inserted, false);
+  assert.match(reply.text, /requires database persistence/);
+  assert.match(reply.text, /POSTGRES_URL/);
 });
 
-test('runPlanCommand skips normalize and save for non-tracked symbols', async () => {
-  let saved = false;
-  let normalized = false;
-  const reply = await runPlanCommand({
+test('enqueuePlanJob refuses a duplicate in-flight job for the same chat and symbol', async () => {
+  let inserted = false;
+  const reply = await enqueuePlanJob({
+    args: ['btc'],
+    chatId: 123,
+    deps: {
+      getPostgresStatus: () => ({ configured: true }),
+      ensurePlanJobsSchema: async () => true,
+      findOpenJob: async (chatId, symbol) => {
+        assert.equal(chatId, 123);
+        assert.equal(symbol, 'BTCUSDT');
+        return { id: 9, symbol: 'BTCUSDT' };
+      },
+      insertPlanJob: async () => {
+        inserted = true;
+      },
+    },
+  });
+
+  assert.equal(inserted, false);
+  assert.match(reply.text, /BTCUSDT is already being analyzed/);
+});
+
+test('enqueuePlanJob inserts a pending collect-stage job and returns an immediate ack', async () => {
+  let insertedPayload;
+  const reply = await enqueuePlanJob({
+    args: ['MU', 'Long', '2w'],
+    chatId: 123,
+    deps: {
+      getPostgresStatus: () => ({ configured: true }),
+      ensurePlanJobsSchema: async () => true,
+      findOpenJob: async () => null,
+      insertPlanJob: async (payload) => {
+        insertedPayload = payload;
+        return { id: 42, stage: 'collect', status: 'pending', ...payload };
+      },
+    },
+  });
+
+  assert.deepEqual(insertedPayload, {
+    chatId: 123,
+    symbol: 'MU',
+    resolvedSymbol: 'MU',
+    alertable: true,
+    direction: 'long',
+    horizon: '2w',
+  });
+  assert.match(reply.text, /Analyzing MU/);
+  assert.match(reply.text, /I'll send the plan here shortly/);
+});
+
+test('enqueuePlanJob queues non-tracked symbols as analysis-only jobs', async () => {
+  let insertedPayload;
+  const reply = await enqueuePlanJob({
     args: ['TSLA'],
     chatId: 123,
     deps: {
       getPostgresStatus: () => ({ configured: true }),
-      runResearchStages: async () => ({
-        ok: true,
-        symbol: 'TSLA',
-        resolvedSymbol: 'TSLA',
-        alertable: false,
-        direction: 'both',
-        horizon: '1-4w',
-        facts: 'facts',
-        inference: 'inference',
-        notes: [],
-      }),
-      assemblePlan: async () => ({
-        ok: true,
-        plan: { analysisSummary: 'Summary.', conditions: [{ kind: 'above', price: 101, actionText: 'Ignore.' }] },
-      }),
-      normalizePlanRulesToAlerts: () => {
-        normalized = true;
-        return { rules: [], rejected: [] };
-      },
-      saveDecisionTreeAlerts: async () => {
-        saved = true;
-        return [];
+      ensurePlanJobsSchema: async () => true,
+      findOpenJob: async () => null,
+      insertPlanJob: async (payload) => {
+        insertedPayload = payload;
+        return { id: 43, stage: 'collect', status: 'pending', ...payload };
       },
     },
   });
 
-  assert.equal(normalized, false);
-  assert.equal(saved, false);
-  assert.match(reply.text, /Alerts skipped/);
-  assert.match(reply.text, /TSLA is not one of the 12 tracked symbols/);
-});
-
-test('runPlanCommand notes when PostgreSQL persistence is unavailable', async () => {
-  let saved = false;
-  const reply = await runPlanCommand({
-    args: ['MU'],
-    chatId: 123,
-    deps: {
-      getPostgresStatus: () => ({ configured: false }),
-      runResearchStages: async () => ({
-        ok: true,
-        symbol: 'MU',
-        resolvedSymbol: 'MU',
-        alertable: true,
-        direction: 'both',
-        horizon: '1-4w',
-        facts: 'facts',
-        inference: 'inference',
-        notes: [],
-      }),
-      assemblePlan: async () => ({
-        ok: true,
-        plan: {
-          analysisSummary: 'Summary.',
-          conditions: [{ kind: 'above', price: 101, actionText: 'Watch breakout.' }],
-        },
-      }),
-      saveDecisionTreeAlerts: async () => {
-        saved = true;
-        return [];
-      },
-    },
-  });
-
-  assert.equal(saved, false);
-  assert.match(reply.text, /Alerts not saved: PostgreSQL persistence unavailable\./);
-});
-
-test('runPlanCommand notes when alert saving fails', async () => {
-  const reply = await runPlanCommand({
-    args: ['MU'],
-    chatId: 123,
-    deps: {
-      getPostgresStatus: () => ({ configured: true }),
-      runResearchStages: async () => ({
-        ok: true,
-        symbol: 'MU',
-        resolvedSymbol: 'MU',
-        alertable: true,
-        direction: 'both',
-        horizon: '1-4w',
-        facts: 'facts',
-        inference: 'inference',
-        notes: [],
-      }),
-      assemblePlan: async () => ({
-        ok: true,
-        plan: {
-          analysisSummary: 'Summary.',
-          conditions: [{ kind: 'above', price: 101, actionText: 'Watch breakout.' }],
-        },
-      }),
-      saveDecisionTreeAlerts: async () => {
-        throw new Error('database down');
-      },
-    },
-  });
-
-  assert.match(reply.text, /Alerts not saved: Alert save failed: database down/);
-});
-
-test('runPlanCommand returns a graceful reply when a stage throws', async () => {
-  const reply = await runPlanCommand({
-    args: ['MU'],
-    chatId: 123,
-    deps: {
-      runResearchStages: async () => {
-        throw new Error('stage exploded');
-      },
-    },
-  });
-
-  assert.equal(reply.parseMode, 'HTML');
-  assert.match(reply.text, /unexpected error: stage exploded/);
+  assert.equal(insertedPayload.resolvedSymbol, 'TSLA');
+  assert.equal(insertedPayload.alertable, false);
+  assert.match(reply.text, /Analysis only/);
 });

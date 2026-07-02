@@ -6,13 +6,13 @@ const { buildReply } = await import('../api/telegram.js');
 test('/plan routes to injected plan command handler', async () => {
   let payload;
   const reply = await buildReply('/plan@trading_alchemist_bot MU long 2w', 123, {
-    runPlanCommand: async (input) => {
+    enqueuePlanJob: async (input) => {
       payload = input;
-      return { text: '<b>fake plan</b>', parseMode: 'HTML' };
+      return { text: '<b>fake queued</b>', parseMode: 'HTML' };
     },
   });
 
-  assert.equal(reply.text, '<b>fake plan</b>');
+  assert.equal(reply.text, '<b>fake queued</b>');
   assert.equal(reply.parseMode, 'HTML');
   assert.equal(payload.symbolInput, 'MU');
   assert.deepEqual(payload.args, ['MU', 'long', '2w']);
@@ -22,7 +22,7 @@ test('/plan routes to injected plan command handler', async () => {
 
 test('/prices remains on the existing route when plan handler is injected', async () => {
   const reply = await buildReply('/prices', 123, {
-    runPlanCommand: async () => {
+    enqueuePlanJob: async () => {
       throw new Error('should not call plan handler for /prices');
     },
     getHyperliquidSnapshot: async () => ({
