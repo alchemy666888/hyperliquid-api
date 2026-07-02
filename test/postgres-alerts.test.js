@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   alertRuleIndicatorParams,
   normalizeAlertRow,
+  parsePostgresConnectionString,
 } from '../lib/postgres.js';
 
 const BASE_ROW = {
@@ -71,4 +72,25 @@ test('builds nullable indicator insert values from alert rules', () => {
     ['ema', null, 20, 50],
   );
   assert.deepEqual(alertRuleIndicatorParams({}), [null, null, null, null]);
+});
+
+test('parses POSTGRES_URL without using legacy url.parse', () => {
+  const config = parsePostgresConnectionString(
+    'postgres://alice:p%40ss@db.example.com:6543/trading?sslmode=require&application_name=alchemy',
+  );
+
+  assert.equal(config.host, 'db.example.com');
+  assert.equal(config.port, 6543);
+  assert.equal(config.user, 'alice');
+  assert.equal(config.password, 'p@ss');
+  assert.equal(config.database, 'trading');
+  assert.equal(config.sslmode, 'require');
+  assert.equal(config.application_name, 'alchemy');
+});
+
+test('rejects non-postgres connection string protocols', () => {
+  assert.throws(
+    () => parsePostgresConnectionString('https://db.example.com/trading'),
+    /postgres:\/\/ or postgresql:\/\//,
+  );
 });
