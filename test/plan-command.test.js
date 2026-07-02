@@ -5,6 +5,7 @@ import {
   enqueuePlanJob,
   formatPlanReply,
   parsePlanArgs,
+  planStatusCommand,
   resolvePlanSymbol,
   runResearchStages,
 } from '../lib/plan-command.js';
@@ -382,7 +383,10 @@ test('enqueuePlanJob inserts a pending collect-stage job and returns an immediat
     direction: 'long',
     horizon: '2w',
   });
-  assert.match(reply.text, /Analyzing MU/);
+  assert.match(reply.text, /Accepted/);
+  assert.match(reply.text, /analyzing MU/);
+  assert.match(reply.text, /in progress/);
+  assert.match(reply.text, /Queued at collect \(step 1\/6\)/);
   assert.match(reply.text, /I'll send the plan here shortly/);
 });
 
@@ -405,4 +409,99 @@ test('enqueuePlanJob queues non-tracked symbols as analysis-only jobs', async ()
   assert.equal(insertedPayload.resolvedSymbol, 'TSLA');
   assert.equal(insertedPayload.alertable, false);
   assert.match(reply.text, /Analysis only/);
+});
+
+test('planStatusCommand reports the latest symbol job progress', async () => {
+  let query;
+  const reply = await planStatusCommand({
+    args: ['btc'],
+    chatId: 123,
+    deps: {
+      getPostgresStatus: () => ({ configured: true }),
+      ensurePlanJobsSchema: async () => true,
+      listPlanJobs: async (chatId, options) => {
+        query = { chatId, options };
+        return [
+          {
+            id: 7,
+            symbol: 'BTC',
+            resolvedSymbol: 'BTCUSDT',
+            alertable: true,
+            direction: 'both',
+            horizon: '1-4w',
+            stage: 'fact_check',
+            status: 'running',
+            createdAt: '2026-07-02T00:00:00.000Z',
+            updatedAt: '2026-07-02T00:01:00.000Z',
+          },
+        ];
+      },
+    },
+  });
+
+  assert.deepEqual(query, {
+    chatId: 123,
+    options: { symbol: 'BTCUSDT', limit: 1 },
+  });
+  assert.match(reply.text, /<b>SwingScope plan status<\/b>/);
+  assert.match(reply.text, /BTCUSDT/);
+  assert.match(reply.text, /In progress/);
+  assert.match(reply.text, /Running: Fact check \(step 2\/6\)/);
+});
+
+test('planStatusCommand lists recent chat jobs when no symbol is supplied', async () => {
+  let query;
+  const reply = await planStatusCommand({
+    chatId: 123,
+    deps: {
+      getPostgresStatus: () => ({ configured: true }),
+      ensurePlanJobsSchema: async () => true,
+      listPlanJobs: async (chatId, options) => {
+        query = { chatId, options };
+        return [
+          { id: 8, resolvedSymbol: 'MU', symbol: 'MU', direction: 'long', horizon: '2w', stage: 'levels', status: 'pending' },
+          { id: 7, resolvedSymbol: 'TSLA', symbol: 'TSLA', direction: 'both', horizon: '1-4w', stage: 'done', status: 'done' },
+        ];
+      },
+    },
+  });
+
+  assert.deepEqual(query, {
+    chatId: 123,
+    options: { symbol: undefined, limit: 5 },
+  });
+  assert.match(reply.text, /<b>SwingScope recent plan jobs<\/b>/);
+  assert.match(reply.text, /MU \| Waiting: Levels \(step 4\/6\)/);
+  assert.match(reply.text, /TSLA \| Done/);
+});
+
+test('planStatusCommand explains when no matching jobs exist', async () => {
+  const reply = await planStatusCommand({
+    args: ['MU'],
+    chatId: 123,
+    deps: {
+      getPostgresStatus: () => ({ configured: true }),
+      ensurePlanJobsSchema: async () => true,
+      listPlanJobs: async () => [],
+    },
+  });
+
+  assert.match(reply.text, /No plan jobs found for MU/);
+  assert.match(reply.text, /Queue one with \/plan/);
+});
+
+test('planStatusCommand requires PostgreSQL persistence', async () => {
+  const reply = await planStatusCommand({
+    args: ['MU'],
+    chatId: 123,
+    deps: {
+      getPostgresStatus: () => ({ configured: false, missing: ['POSTGRES_URL'] }),
+      listPlanJobs: async () => {
+        throw new Error('should not query without persistence');
+      },
+    },
+  });
+
+  assert.match(reply.text, /requires database persistence/);
+  assert.match(reply.text, /POSTGRES_URL/);
 });

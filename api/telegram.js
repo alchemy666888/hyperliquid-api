@@ -13,7 +13,7 @@ import {
 } from '../lib/decision-tree-alerts.js';
 import { classifyAssetDecisionTreeCondition } from '../lib/ai-decision-tree-alerts.js';
 import { answerResearchChat, answerStatelessAiChat } from '../lib/conversational-ai.js';
-import { enqueuePlanJob } from '../lib/plan-command.js';
+import { enqueuePlanJob, planStatusCommand } from '../lib/plan-command.js';
 import { getAiStatus } from '../lib/ai-client.js';
 import { getSearchStatus } from '../lib/search.js';
 import { sendTelegramMessage } from '../lib/telegram-client.js';
@@ -201,6 +201,7 @@ function helpMessage() {
     ['/asset BTCUSDT', 'Show 4H indicators for one asset'],
     ['/rsh BTC latest catalysts', 'Research fresh market/news context'],
     ['/plan MU long 2w', 'Queue full swing workflow; plan is pushed here shortly'],
+    ['/planstatus MU', 'Check queued swing workflow progress'],
     ['/treealert', 'AI-analyze and save pasted decision-tree alerts'],
     ['/condition MU', 'Classify current saved tree condition'],
     ['/alerts', 'List active decision-tree alerts'],
@@ -527,6 +528,10 @@ export async function buildReply(text, chatId, deps = {}) {
 
   if (command === '/plan') {
     return (deps.enqueuePlanJob ?? enqueuePlanJob)({ symbolInput: args[0], args, body, chatId, deps });
+  }
+
+  if (command === '/planstatus' || command === '/plan_status') {
+    return (deps.planStatusCommand ?? planStatusCommand)({ symbolInput: args[0], args, chatId, deps });
   }
 
   if (command === '/treealert' || command === '/decisiontree') {

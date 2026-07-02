@@ -34,3 +34,19 @@ test('/prices remains on the existing route when plan handler is injected', asyn
 
   assert.match(reply.text, /<b>Hyperliquid prices \(4h\)<\/b>/);
 });
+
+test('/planstatus routes to injected plan status handler', async () => {
+  let payload;
+  const reply = await buildReply('/planstatus MU', 123, {
+    planStatusCommand: async (input) => {
+      payload = input;
+      return { text: '<b>fake status</b>', parseMode: 'HTML' };
+    },
+  });
+
+  assert.equal(reply.text, '<b>fake status</b>');
+  assert.equal(reply.parseMode, 'HTML');
+  assert.equal(payload.symbolInput, 'MU');
+  assert.deepEqual(payload.args, ['MU']);
+  assert.equal(payload.chatId, 123);
+});

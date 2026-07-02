@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   claimOneJob,
   commitStage,
+  listPlanJobs,
   markReplySent,
   reapStaleJobs,
   readPlanJobConfig,
@@ -61,6 +62,29 @@ test('claimOneJob uses an atomic SKIP LOCKED update and returns one row', async 
   assert.match(queries[0].sql, /UPDATE plan_jobs/);
   assert.match(queries[0].sql, /FOR UPDATE SKIP LOCKED/);
   assert.match(queries[0].sql, /LIMIT 1/);
+});
+
+test('listPlanJobs filters by optional canonical symbol and limits recent rows', async () => {
+  const queries = [];
+  const client = {
+    async query(sql, params) {
+      queries.push({ sql: String(sql), params });
+      return {
+        rows: [
+          planRow({ id: 9, status: 'pending', stage: 'levels' }),
+        ],
+      };
+    },
+  };
+
+  const jobs = await listPlanJobs(123, { symbol: 'MU', limit: 1, client });
+
+  assert.equal(jobs.length, 1);
+  assert.equal(jobs[0].id, 9);
+  assert.match(queries[0].sql, /WHERE chat_id = \$1/);
+  assert.match(queries[0].sql, /UPPER\(COALESCE\(resolved_symbol, symbol\)\) = UPPER\(\$2\)/);
+  assert.match(queries[0].sql, /ORDER BY created_at DESC, id DESC/);
+  assert.deepEqual(queries[0].params, ['123', 'MU', 1]);
 });
 
 test('commitStage writes output, advances cursor, and clears lock in one transaction', async () => {
