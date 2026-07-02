@@ -12,7 +12,7 @@ import {
   parseDecisionTreeAlertTextWithAi,
 } from '../lib/decision-tree-alerts.js';
 import { classifyAssetDecisionTreeCondition } from '../lib/ai-decision-tree-alerts.js';
-import { answerStatelessAiChat } from '../lib/conversational-ai.js';
+import { answerResearchChat, answerStatelessAiChat } from '../lib/conversational-ai.js';
 import { getAiStatus } from '../lib/ai-client.js';
 import { getSearchStatus } from '../lib/search.js';
 import { sendTelegramMessage } from '../lib/telegram-client.js';
@@ -198,6 +198,7 @@ function helpMessage() {
     ['Chat', 'Send a normal message to ask AI about the current market. No command needed.'],
     ['/prices', 'Show all tracked prices and regimes'],
     ['/asset BTCUSDT', 'Show 4H indicators for one asset'],
+    ['/rsh BTC latest catalysts', 'Research fresh market/news context'],
     ['/treealert', 'AI-analyze and save pasted decision-tree alerts'],
     ['/condition MU', 'Classify current saved tree condition'],
     ['/alerts', 'List active decision-tree alerts'],
@@ -510,6 +511,18 @@ export async function buildReply(text, chatId, deps = {}) {
     return conditionMessage({ chatId, symbolInput: args[0], deps });
   }
 
+  if (command === '/rsh' || command === '/research') {
+    return (deps.answerResearchChat ?? answerResearchChat)({
+      message: body,
+      getSnapshot: deps.getHyperliquidSnapshot,
+      getSearch: deps.getSearch,
+      aiJson: deps.aiJson,
+      extractSearchQuery: deps.extractSearchQuery,
+      extractionCache: deps.extractionCache,
+      deepSeekChat: deps.deepSeekChat,
+    });
+  }
+
   if (command === '/treealert' || command === '/decisiontree') {
     return setupTreeAlerts(body, chatId, deps);
   }
@@ -527,6 +540,9 @@ export async function buildReply(text, chatId, deps = {}) {
       message: text,
       getSnapshot: deps.getHyperliquidSnapshot,
       getSearch: deps.getSearch,
+      aiJson: deps.aiJson,
+      extractSearchQuery: deps.extractSearchQuery,
+      extractionCache: deps.extractionCache,
       deepSeekChat: deps.deepSeekChat,
     });
   }

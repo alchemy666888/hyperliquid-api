@@ -13,7 +13,7 @@ test('getSearchStatus reports missing SearchApi.io variables safely', () => {
   assert.equal(status.provider, 'SEARCHAPI_IO');
   assert.equal(status.configured, false);
   assert.equal(status.apiKeyConfigured, false);
-  assert.equal(status.engine, 'google');
+  assert.equal(status.engine, 'google_news');
   assert.deepEqual(status.missing, ['SEARCHAPI_API_KEY']);
 });
 
@@ -35,6 +35,8 @@ test('parseSearchOutput normalizes SearchApi.io JSON', () => {
     {
       rank: 1,
       title: 'First result',
+      source: '',
+      date: '',
       link: 'https://example.com/first',
       snippet: 'Useful current context.',
     },
@@ -75,8 +77,60 @@ test('createSearchTool calls SearchApi.io and returns compact organic results JS
   assert.deepEqual(results, [
     {
       title: 'OpenAI announces update',
+      source: '',
+      date: '',
       link: 'https://example.com/openai-update',
       snippet: 'The result snippet.',
+    },
+  ]);
+});
+
+test('createSearchTool accepts structured SearchApi params and normalizes news results', async () => {
+  let requestedUrl;
+  const tool = createSearchTool({
+    apiKey: 'searchapi-key',
+    engine: 'google_news',
+    resultLimit: 8,
+  }, {
+    fetchImpl: async url => {
+      requestedUrl = url;
+      return {
+        ok: true,
+        json: async () => ({
+          news_results: [
+            {
+              title: 'Bitcoin rallies',
+              source: { name: 'Example News' },
+              date: '1 hour ago',
+              link: 'https://example.com/btc',
+              snippet: 'Bitcoin moved higher after fresh macro news.',
+            },
+          ],
+        }),
+      };
+    },
+  });
+
+  const output = await tool.invoke({
+    engine: 'google_news',
+    q: 'Bitcoin',
+    gl: 'us',
+    hl: 'en',
+    tbs: 'qdr:d,sbd:1',
+  });
+  const results = JSON.parse(output);
+
+  assert.equal(
+    requestedUrl.href,
+    'https://www.searchapi.io/api/v1/search?engine=google_news&q=Bitcoin&gl=us&hl=en&tbs=qdr%3Ad%2Csbd%3A1'
+  );
+  assert.deepEqual(results, [
+    {
+      title: 'Bitcoin rallies',
+      source: 'Example News',
+      date: '1 hour ago',
+      link: 'https://example.com/btc',
+      snippet: 'Bitcoin moved higher after fresh macro news.',
     },
   ]);
 });
@@ -187,6 +241,47 @@ test('searchForContext invokes an injected SearchApi.io-compatible search tool',
   assert.equal(context.timestamp, '2026-07-01T00:00:00.000Z');
   assert.equal(context.resultCount, 1);
   assert.equal(context.results[0].title, 'OpenAI announces update');
+});
+
+test('searchForContext passes structured params to an injected SearchApi.io-compatible search tool', async () => {
+  let searchedParams;
+  const context = await searchForContext({
+    params: {
+      engine: 'google_news',
+      q: 'Bitcoin',
+      gl: 'us',
+      hl: 'en',
+      tbs: 'qdr:d,sbd:1',
+    },
+    env: {},
+    now: new Date('2026-07-01T00:00:00.000Z'),
+    searchTool: {
+      invoke: async params => {
+        searchedParams = params;
+        return JSON.stringify([
+          {
+            title: 'Bitcoin rallies',
+            source: 'Example News',
+            date: '1 hour ago',
+            link: 'https://example.com/btc',
+            snippet: 'Bitcoin moved higher after fresh macro news.',
+          },
+        ]);
+      },
+    },
+  });
+
+  assert.deepEqual(searchedParams, {
+    engine: 'google_news',
+    q: 'Bitcoin',
+    gl: 'us',
+    hl: 'en',
+    tbs: 'qdr:d,sbd:1',
+  });
+  assert.equal(context.ok, true);
+  assert.equal(context.query, 'Bitcoin');
+  assert.equal(context.searchParams.tbs, 'qdr:d,sbd:1');
+  assert.equal(context.results[0].source, 'Example News');
 });
 
 test('searchForContext returns setup guidance when SearchApi.io is not configured', async () => {

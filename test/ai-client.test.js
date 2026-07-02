@@ -10,6 +10,7 @@ function clearAiEnv() {
   delete process.env.CLAUDE_API_KEY;
   delete process.env.CLAUDE_BASE_URL;
   delete process.env.CLAUDE_MODEL;
+  delete process.env.CLAUDE_EXTRACTOR_MODEL;
   delete process.env.CLAUDE_ANTHROPIC_VERSION;
 }
 
@@ -38,7 +39,36 @@ test('AI config selects Claude with CLAUDE_API_KEY', () => {
   assert.deepEqual(config.missing, []);
   assert.equal(status.provider, 'CLAUDE');
   assert.equal(status.claude.configured, true);
+  assert.equal(status.claude.extractorModelConfigured, false);
   assert.equal(status.deepseek.configured, false);
+  clearAiEnv();
+});
+
+test('requestAiJson uses Claude extractor model override for extractor tasks', async () => {
+  clearAiEnv();
+  process.env.AI_MODEL_PROVIDER = 'CLAUDE';
+  process.env.CLAUDE_API_KEY = 'claude-key';
+  process.env.CLAUDE_BASE_URL = 'https://claude.example/';
+  process.env.CLAUDE_MODEL = 'claude-analysis-model';
+  process.env.CLAUDE_EXTRACTOR_MODEL = 'claude-extractor-model';
+  let requestBody;
+
+  const result = await requestAiJson({
+    task: 'extractor',
+    messages: [{ role: 'user', content: 'Return JSON.' }],
+    fetchImpl: async (url, options) => {
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        json: async () => ({
+          content: [{ type: 'text', text: '{"ok":true}' }],
+        }),
+      };
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(requestBody.model, 'claude-extractor-model');
   clearAiEnv();
 });
 

@@ -29,6 +29,68 @@ test('buildReply routes daily-life text to stateless AI chat', async () => {
   assert.equal(reply.text, 'Dinner answer');
 });
 
+test('buildReply routes /rsh to research chat', async () => {
+  const reply = await buildReply('/rsh 分析一下 btc 有什麼做多或者做空的機會', 123, {
+    answerResearchChat: async ({ message }) => {
+      assert.equal(message, '分析一下 btc 有什麼做多或者做空的機會');
+      return { text: 'Research answer' };
+    },
+  });
+
+  assert.equal(reply.text, 'Research answer');
+});
+
+test('buildReply /rsh transforms the search query before analysis', async () => {
+  let searchedParams;
+  let aiRequest;
+  const reply = await buildReply('/rsh 分析一下 btc 有什麼做多或者做空的機會', 123, {
+    getHyperliquidSnapshot: async () => ({
+      interval: '4h',
+      timestamp: '2026-07-01T00:00:00.000Z',
+      assets: [
+        {
+          symbol: 'BTCUSDT',
+          price: 61000,
+          regime: 'MIXED',
+          indicators: {},
+        },
+      ],
+    }),
+    getSearch: async ({ params }) => {
+      searchedParams = params;
+      return {
+        ok: true,
+        source: 'searchapi-io',
+        query: params.q,
+        timestamp: '2026-07-01T00:00:00.000Z',
+        resultCount: 1,
+        results: [
+          {
+            rank: 1,
+            title: 'Bitcoin news update',
+            source: 'Example News',
+            date: '1 hour ago',
+            snippet: 'Fresh Bitcoin market context.',
+            link: 'https://example.com/btc',
+          },
+        ],
+      };
+    },
+    deepSeekChat: async request => {
+      aiRequest = request;
+      return { ok: true, text: 'BTC research answer' };
+    },
+  });
+
+  assert.equal(searchedParams.q, 'Bitcoin');
+  assert.notEqual(searchedParams.q, '分析一下 btc 有什麼做多或者做空的機會');
+  assert.equal(searchedParams.engine, 'google_news');
+  const userPayload = JSON.parse(aiRequest.messages[1].content);
+  assert.equal(userPayload.currentRequest, '分析一下 btc 有什麼做多或者做空的機會');
+  assert.equal(userPayload.freshArticles[0].title, 'Bitcoin news update');
+  assert.match(reply.text, /BTC research answer/);
+});
+
 test('buildReply keeps unknown slash commands on the help path', async () => {
   const reply = await buildReply('/unknown please chat', 123, {
     answerStatelessAiChat: async () => {

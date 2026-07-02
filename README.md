@@ -72,7 +72,7 @@ When `TELEGRAM_SECRET_TOKEN` is set, `/api/telegram` validates `x-telegram-bot-a
 
 ## AI Model Setup
 
-The bot uses the configured AI provider for `/condition <symbol>` classification and for normal no-command AI chat. No-command chat is stateless: each reply only uses the current user message, SearchApi.io web results, and fresh Hyperliquid market context when the message is trading-related or mentions a tracked symbol, even though the raw communication history is persisted when PostgreSQL is configured.
+The bot uses the configured AI provider for `/condition <symbol>` classification, `/rsh` research, and normal no-command AI chat. No-command chat is stateless: each reply only uses the current user message, SearchApi.io results when the request needs current market/news data, and fresh Hyperliquid market context when the message is trading-related or mentions a tracked symbol, even though the raw communication history is persisted when PostgreSQL is configured.
 
 Choose the provider with `AI_MODEL_PROVIDER`. Supported values are `DEEPSEEK` and `CLAUDE`; if this variable is omitted, the bot keeps the existing default of `DEEPSEEK`.
 
@@ -104,6 +104,7 @@ Optional Claude variables:
 ```bash
 vercel env add CLAUDE_BASE_URL
 vercel env add CLAUDE_MODEL
+vercel env add CLAUDE_EXTRACTOR_MODEL
 vercel env add CLAUDE_ANTHROPIC_VERSION
 ```
 
@@ -115,15 +116,29 @@ vercel env add DEFAULT_WEATHER_LOCATION
 
 Weather forecast times and Telegram timestamps are rendered in Hong Kong Time (`Asia/Hong_Kong`, `HKT`).
 
-Required SearchApi.io variable for no-command AI chat:
+Required SearchApi.io variable for `/rsh` and current market/news chat:
 
 ```bash
 vercel env add SEARCHAPI_API_KEY
 ```
 
-No-command AI chat always performs a SearchApi.io request before asking the AI to answer. Trading, price, indicator, and tracked-symbol questions also use the existing Hyperliquid snapshot as the market source of truth. Set `SEARCHAPI_ENGINE` to change the SearchApi.io engine; it defaults to `google`. Set `SEARCHAPI_RESULT_LIMIT` to tune how many results are passed to the AI; the default is `5` and the maximum is `10`.
+Market/news research uses a query-tuning layer before SearchApi.io. The bot first extracts clean keywords and freshness parameters, then calls SearchApi.io with `engine=google_news`, deliberate locale params, and chronological `tbs` filtering. The raw chat sentence is preserved for the final AI analysis prompt, but it is not sent to SearchApi directly except as a malformed-extractor fallback.
 
-`DEEPSEEK_BASE_URL` and `CLAUDE_BASE_URL` are optional when using the providers' default API endpoints. `DEEPSEEK_MODEL` and `CLAUDE_MODEL` are optional when the app default models are acceptable. Redeploy after changing environment variables:
+No-command AI chat performs SearchApi.io requests only when the request appears to need current market/news data. Casual chat and weather requests do not burn SearchApi credits. Trading, price, indicator, and tracked-symbol questions also use the existing Hyperliquid snapshot as the market source of truth. Set `SEARCHAPI_ENGINE` to change the default SearchApi.io engine; it defaults to `google_news`. Set `SEARCHAPI_RESULT_LIMIT` to tune how many results are passed to the AI; the default is `8` and the maximum is `10`.
+
+Optional query extraction/cache variables:
+
+```bash
+vercel env add SEARCH_QUERY_INCLUDE_SITES
+vercel env add SEARCH_QUERY_EXCLUDE_SITES
+vercel env add SEARCH_QUERY_CACHE_TTL_SECONDS
+vercel env add REDIS_REST_URL
+vercel env add REDIS_REST_TOKEN
+```
+
+`UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are also supported. Redis is optional; without it, extraction still works.
+
+`DEEPSEEK_BASE_URL` and `CLAUDE_BASE_URL` are optional when using the providers' default API endpoints. `DEEPSEEK_MODEL`, `CLAUDE_MODEL`, and `CLAUDE_EXTRACTOR_MODEL` are optional when the app default models are acceptable. Redeploy after changing environment variables:
 
 ```bash
 vercel deploy --prod
@@ -205,20 +220,21 @@ You can talk to the bot normally without a slash command, for example:
 What is happening with BTC right now?
 ```
 
-The AI reply uses only that current request and SearchApi.io web results. A fresh Hyperliquid market snapshot is added when the request is trading-related or mentions a tracked symbol. Previous communication history is saved to PostgreSQL when configured, but it is not considered as chat memory.
+The AI reply uses only that current request, SearchApi.io results when current market/news research is needed, and a fresh Hyperliquid market snapshot when the request is trading-related or mentions a tracked symbol. Previous communication history is saved to PostgreSQL when configured, but it is not considered as chat memory.
 
 ```text
 /start
 /help
 /prices
 /asset BTCUSDT
+/rsh BTC latest catalysts
 /treealert
 /condition MU
 /alerts
 /clearalerts [MU]
 ```
 
-`/prices` returns all tracked prices and regimes. `/asset <symbol>` returns a detailed 4H indicator snapshot for one asset. `/condition <symbol>` (or `/treecondition <symbol>`) classifies the current price against that chat's saved decision tree for one asset; `/condition` without a symbol evaluates every tracked asset.
+`/prices` returns all tracked prices and regimes. `/asset <symbol>` returns a detailed 4H indicator snapshot for one asset. `/rsh <question>` runs a fresh Google News research flow with query extraction before SearchApi. `/condition <symbol>` (or `/treecondition <symbol>`) classifies the current price against that chat's saved decision tree for one asset; `/condition` without a symbol evaluates every tracked asset.
 
 ### Decision-tree alerts
 
