@@ -45,3 +45,28 @@ test('validates successful DeepSeek classification response', async () => {
   assert.equal(result.currentCondition, 'Breakout hold');
   assert.equal(result.confidence, 0.83);
 });
+
+test('falls back to deterministic technical rule matching with indicators', async () => {
+  const result = await classifyAssetDecisionTreeCondition({
+    asset: { symbol: 'MU', price: 1170, indicators: { rsi14: 28 } },
+    currentPrice: 1170,
+    indicators: { rsi14: 28 },
+    activeRules: [
+      {
+        id: 3,
+        symbol: 'MU',
+        conditionText: 'MU RSI(14) below 30?',
+        conditionKind: 'rsi_below',
+        indicatorParams: { kind: 'rsi', threshold: 30, fast: null, slow: null },
+        actionText: 'Watch reset.',
+        rawTree: 'tree',
+      },
+    ],
+    rawTree: 'tree',
+    deepSeekJson: async () => { throw new Error('network down'); },
+  });
+
+  assert.equal(result.source, 'deterministic');
+  assert.deepEqual(result.matchedRuleIds, [3]);
+  assert.equal(result.decision, 'Watch reset.');
+});
