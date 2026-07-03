@@ -4,26 +4,6 @@ import {
   runPlanStageOnce,
 } from '../../lib/plan-stage-runner.js';
 
-function readEnv(name) {
-  const value = process.env[name];
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function getHeader(req, name) {
-  const key = name.toLowerCase();
-  return req.headers?.[key] ?? req.headers?.[name];
-}
-
-function runnerSecret() {
-  return readEnv('PLAN_RUNNER_SECRET') || readEnv('CRON_SECRET');
-}
-
-function isAuthorized(req) {
-  const secret = runnerSecret();
-  if (!secret) return false;
-  return getHeader(req, 'authorization') === `Bearer ${secret}`;
-}
-
 function requestStage(req) {
   const value = req.query?.stage;
   return Array.isArray(value) ? value[0] : value;
@@ -33,23 +13,6 @@ export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     res.setHeader('Allow', 'GET, POST');
     res.status(405).json({ error: 'Method not allowed' });
-    return;
-  }
-
-  if (!runnerSecret()) {
-    res.status(500).json({
-      error: 'Missing PLAN_RUNNER_SECRET.',
-      fallback: 'CRON_SECRET is also accepted for compatibility.',
-      status: 'error',
-    });
-    return;
-  }
-
-  if (!isAuthorized(req)) {
-    res.status(401).json({
-      error: 'Unauthorized plan runner request.',
-      status: 'error',
-    });
     return;
   }
 

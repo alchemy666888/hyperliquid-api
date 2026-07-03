@@ -246,26 +246,20 @@ The AI reply uses only that current request, SearchApi.io results when current m
 collect -> fact_check -> infer -> levels -> plan -> send
 ```
 
-Each API call processes at most one pending job for the stage named in the URL. To keep plans moving on Vercel Cloud without Vercel Cron, configure your external scheduler to call these endpoints in stage order, for example once per minute:
+Each API call processes at most one pending job for the stage named in the URL. To keep plans moving on Vercel Cloud without Vercel Cron, configure your external scheduler to call these public endpoints in stage order, for example once per minute:
 
 ```bash
-curl -i -H "Authorization: Bearer $PLAN_RUNNER_SECRET" \
-  https://your-domain.vercel.app/api/plan-runner/collect
+curl -i https://your-domain.vercel.app/api/plan-runner/collect
 
-curl -i -H "Authorization: Bearer $PLAN_RUNNER_SECRET" \
-  https://your-domain.vercel.app/api/plan-runner/fact_check
+curl -i https://your-domain.vercel.app/api/plan-runner/fact_check
 
-curl -i -H "Authorization: Bearer $PLAN_RUNNER_SECRET" \
-  https://your-domain.vercel.app/api/plan-runner/infer
+curl -i https://your-domain.vercel.app/api/plan-runner/infer
 
-curl -i -H "Authorization: Bearer $PLAN_RUNNER_SECRET" \
-  https://your-domain.vercel.app/api/plan-runner/levels
+curl -i https://your-domain.vercel.app/api/plan-runner/levels
 
-curl -i -H "Authorization: Bearer $PLAN_RUNNER_SECRET" \
-  https://your-domain.vercel.app/api/plan-runner/plan
+curl -i https://your-domain.vercel.app/api/plan-runner/plan
 
-curl -i -H "Authorization: Bearer $PLAN_RUNNER_SECRET" \
-  https://your-domain.vercel.app/api/plan-runner/send
+curl -i https://your-domain.vercel.app/api/plan-runner/send
 ```
 
 `fact-check` is also accepted as a path alias for `fact_check`. The API returns JSON with an event such as `plan_stage_runner_complete` or `plan_stage_runner_noop`. If `/planstatus <symbol>` shows `Waiting: Collect (step 1/6)` for several minutes, call `/api/plan-runner/collect` first; that is the stage that claims newly queued jobs.
@@ -273,7 +267,6 @@ curl -i -H "Authorization: Bearer $PLAN_RUNNER_SECRET" \
 Required Vercel environment variables for this workflow:
 
 ```bash
-vercel env add PLAN_RUNNER_SECRET
 vercel env add POSTGRES_URL
 vercel env add TELEGRAM_BOT_TOKEN
 vercel env add SEARCHAPI_API_KEY
@@ -281,7 +274,7 @@ vercel env add AI_MODEL_PROVIDER
 vercel env add DEEPSEEK_API_KEY
 ```
 
-`DATABASE_URL` can be used instead of `POSTGRES_URL`. If you use Claude, set `CLAUDE_API_KEY` instead of `DEEPSEEK_API_KEY`. `CRON_SECRET` is also accepted as a fallback authorization secret, but `PLAN_RUNNER_SECRET` is preferred for external schedulers.
+`DATABASE_URL` can be used instead of `POSTGRES_URL`. If you use Claude, set `CLAUDE_API_KEY` instead of `DEEPSEEK_API_KEY`.
 
 ### Decision-tree alerts
 
@@ -338,8 +331,9 @@ Returns the latest PostgreSQL snapshot without fetching fresh market data.
 
 ```text
 GET or POST https://your-domain.vercel.app/api/plan-runner/:stage
-Authorization: Bearer <PLAN_RUNNER_SECRET>
 ```
+
+This endpoint is public and does not require an `Authorization` header.
 
 Allowed `stage` values:
 
