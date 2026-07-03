@@ -228,13 +228,60 @@ The AI reply uses only that current request, SearchApi.io results when current m
 /prices
 /asset BTCUSDT
 /rsh BTC latest catalysts
+/plan MU long 2w
+/planstatus MU
 /treealert
 /condition MU
 /alerts
 /clearalerts [MU]
 ```
 
-`/prices` returns all tracked prices and regimes. `/asset <symbol>` returns a detailed 4H indicator snapshot for one asset. `/rsh <question>` runs a fresh Google News research flow with query extraction before SearchApi. `/condition <symbol>` (or `/treecondition <symbol>`) classifies the current price against that chat's saved decision tree for one asset; `/condition` without a symbol evaluates every tracked asset.
+`/prices` returns all tracked prices and regimes. `/asset <symbol>` returns a detailed 4H indicator snapshot for one asset. `/rsh <question>` runs a fresh Google News research flow with query extraction before SearchApi. `/plan <symbol> [long|short|both] [horizon]` queues a staged SwingScope research workflow and immediately confirms the request was accepted. `/planstatus [symbol]` checks queued or recently completed plan progress. `/condition <symbol>` (or `/treecondition <symbol>`) classifies the current price against that chat's saved decision tree for one asset; `/condition` without a symbol evaluates every tracked asset.
+
+### SwingScope plan workflow
+
+`/plan` is asynchronous. The Telegram command creates a durable row in `plan_jobs`; it does not run all research inline. An external scheduler must call the plan runner API periodically to move jobs through these stages:
+
+```text
+collect -> fact_check -> infer -> levels -> plan -> send
+```
+
+Each API call processes at most one pending job for the stage named in the URL. To keep plans moving on Vercel Cloud without Vercel Cron, configure your external scheduler to call these endpoints in stage order, for example once per minute:
+
+```bash
+curl -i -H "Authorization: Bearer $PLAN_RUNNER_SECRET" \
+  https://your-domain.vercel.app/api/plan-runner/collect
+
+curl -i -H "Authorization: Bearer $PLAN_RUNNER_SECRET" \
+  https://your-domain.vercel.app/api/plan-runner/fact_check
+
+curl -i -H "Authorization: Bearer $PLAN_RUNNER_SECRET" \
+  https://your-domain.vercel.app/api/plan-runner/infer
+
+curl -i -H "Authorization: Bearer $PLAN_RUNNER_SECRET" \
+  https://your-domain.vercel.app/api/plan-runner/levels
+
+curl -i -H "Authorization: Bearer $PLAN_RUNNER_SECRET" \
+  https://your-domain.vercel.app/api/plan-runner/plan
+
+curl -i -H "Authorization: Bearer $PLAN_RUNNER_SECRET" \
+  https://your-domain.vercel.app/api/plan-runner/send
+```
+
+`fact-check` is also accepted as a path alias for `fact_check`. The API returns JSON with an event such as `plan_stage_runner_complete` or `plan_stage_runner_noop`. If `/planstatus <symbol>` shows `Waiting: Collect (step 1/6)` for several minutes, call `/api/plan-runner/collect` first; that is the stage that claims newly queued jobs.
+
+Required Vercel environment variables for this workflow:
+
+```bash
+vercel env add PLAN_RUNNER_SECRET
+vercel env add POSTGRES_URL
+vercel env add TELEGRAM_BOT_TOKEN
+vercel env add SEARCHAPI_API_KEY
+vercel env add AI_MODEL_PROVIDER
+vercel env add DEEPSEEK_API_KEY
+```
+
+`DATABASE_URL` can be used instead of `POSTGRES_URL`. If you use Claude, set `CLAUDE_API_KEY` instead of `DEEPSEEK_API_KEY`. `CRON_SECRET` is also accepted as a fallback authorization secret, but `PLAN_RUNNER_SECRET` is preferred for external schedulers.
 
 ### Decision-tree alerts
 
@@ -286,6 +333,50 @@ GET https://your-domain.vercel.app/api/hyperliquid?stored=latest
 ```
 
 Returns the latest PostgreSQL snapshot without fetching fresh market data.
+
+### Plan runner endpoint
+
+```text
+GET or POST https://your-domain.vercel.app/api/plan-runner/:stage
+Authorization: Bearer <PLAN_RUNNER_SECRET>
+```
+
+Allowed `stage` values:
+
+```text
+collect
+fact_check
+infer
+levels
+plan
+send
+```
+
+Example response when a job is advanced:
+
+```json
+{
+  "status": "ok",
+  "result": {
+    "event": "plan_stage_runner_complete",
+    "stage": "collect",
+    "jobId": "42",
+    "symbol": "SPCX"
+  }
+}
+```
+
+Example response when there is no job waiting at that stage:
+
+```json
+{
+  "status": "ok",
+  "result": {
+    "event": "plan_stage_runner_noop",
+    "stage": "collect"
+  }
+}
+```
 
 ### Response
 

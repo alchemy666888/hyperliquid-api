@@ -8,6 +8,10 @@
     "api/telegram.js": {
       "memory": 512,
       "maxDuration": 30
+    },
+    "api/plan-runner/[stage].js": {
+      "memory": 512,
+      "maxDuration": 30
     }
   }
 }

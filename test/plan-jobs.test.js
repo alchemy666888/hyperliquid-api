@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   claimOneJob,
+  claimOneJobAtStage,
   commitStage,
   listPlanJobs,
   markReplySent,
@@ -62,6 +63,24 @@ test('claimOneJob uses an atomic SKIP LOCKED update and returns one row', async 
   assert.match(queries[0].sql, /UPDATE plan_jobs/);
   assert.match(queries[0].sql, /FOR UPDATE SKIP LOCKED/);
   assert.match(queries[0].sql, /LIMIT 1/);
+});
+
+test('claimOneJobAtStage atomically claims only jobs at the requested stage', async () => {
+  const queries = [];
+  const client = {
+    async query(sql, params) {
+      queries.push({ sql: String(sql), params });
+      return { rows: [planRow({ id: 8, stage: 'levels', status: 'running' })] };
+    },
+  };
+
+  const job = await claimOneJobAtStage(client, 'levels');
+
+  assert.equal(job.id, 8);
+  assert.equal(job.stage, 'levels');
+  assert.match(queries[0].sql, /stage = \$1/);
+  assert.match(queries[0].sql, /FOR UPDATE SKIP LOCKED/);
+  assert.deepEqual(queries[0].params, ['levels']);
 });
 
 test('listPlanJobs filters by optional canonical symbol and limits recent rows', async () => {

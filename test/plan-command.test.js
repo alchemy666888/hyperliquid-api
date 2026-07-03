@@ -474,8 +474,8 @@ test('planStatusCommand warns when collect has waited too long for the scheduler
     },
   });
 
-  assert.match(reply.text, /No \/plan scheduler tick has picked this up for 21 minutes/);
-  assert.match(reply.text, /npm run plan-scheduler-once/);
+  assert.match(reply.text, /No external runner call has picked this up for 21 minutes/);
+  assert.match(reply.text, /\/api\/plan-runner\/collect/);
 });
 
 test('planStatusCommand does not warn for a fresh collect job', async () => {
@@ -503,7 +503,7 @@ test('planStatusCommand does not warn for a fresh collect job', async () => {
     },
   });
 
-  assert.doesNotMatch(reply.text, /No \/plan scheduler tick/);
+  assert.doesNotMatch(reply.text, /No external runner call/);
 });
 
 test('planStatusCommand lists recent chat jobs when no symbol is supplied', async () => {
