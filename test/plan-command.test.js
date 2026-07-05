@@ -261,7 +261,12 @@ test('formatPlanReply separates analysis, execution, and saved alert status', ()
       alertable: true,
       plan: {
         analysisSummary: 'Neutral summary.',
-        long: { entries: [101], stop: 95, targets: [110], rationale: 'Breakout follow-through.' },
+        long: {
+          entries: [{ type: 'limit', price: 101, rationale: 'Breakout trigger.', timeInForce: 'GTC' }],
+          stop: 95,
+          targets: [{ type: 'limit', price: 110, rationale: 'First target.' }],
+          rationale: 'Breakout follow-through.',
+        },
         conditions: [],
       },
     },
@@ -270,10 +275,16 @@ test('formatPlanReply separates analysis, execution, and saved alert status', ()
   });
 
   assert.equal(reply.parseMode, 'HTML');
+  assert.match(reply.text, /<b>SwingScope plan<\/b>\n<code>MU<\/code>/);
   assert.match(reply.text, /<b>Analysis<\/b>/);
   assert.match(reply.text, /Neutral summary\./);
   assert.match(reply.text, /<b>Execution<\/b>/);
-  assert.match(reply.text, /Entries: 101/);
+  assert.match(reply.text, /<b>Entries<\/b>\n1\. <code>limit @ 101<\/code>/);
+  assert.match(reply.text, /<i>Why:<\/i> Breakout trigger\./);
+  assert.match(reply.text, /<i>Time In Force:<\/i> GTC/);
+  assert.match(reply.text, /<b>Stop \/ invalidation<\/b>\n<code>95<\/code>/);
+  assert.match(reply.text, /<b>Targets<\/b>\n1\. <code>limit @ 110<\/code>/);
+  assert.match(reply.text, /<b>Rationale<\/b>\nBreakout follow-through\./);
   assert.match(reply.text, /Alerts saved: 2 for MU\. 1 generated condition rejected\./);
 });
 
