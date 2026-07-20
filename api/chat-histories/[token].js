@@ -1,9 +1,9 @@
-import '../lib/telegram-log-forwarder.js';
+import '../../lib/telegram-log-forwarder.js';
 import { timingSafeEqual } from 'node:crypto';
 import {
   getPostgresStatus,
   listTelegramChatHistories,
-} from '../lib/postgres.js';
+} from '../../lib/postgres.js';
 
 const DEFAULT_CHAT_LIMIT = 50;
 const MAX_CHAT_LIMIT = 200;
@@ -15,11 +15,6 @@ function readEnv(env, name) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function getHeader(req, name) {
-  const key = name.toLowerCase();
-  return req.headers?.[key] ?? req.headers?.[name];
-}
-
 function safeEqual(a, b) {
   const aBuf = Buffer.from(a);
   const bBuf = Buffer.from(b);
@@ -27,16 +22,12 @@ function safeEqual(a, b) {
   return timingSafeEqual(aBuf, bBuf);
 }
 
-function bearerToken(req) {
-  const authorization = String(getHeader(req, 'authorization') ?? '').trim();
-  const match = authorization.match(/^Bearer\s+(.+)$/i);
-  return match?.[1]?.trim() ?? '';
+function firstQueryValue(value) {
+  return Array.isArray(value) ? value[0] : value;
 }
 
-function providedToken(req) {
-  return bearerToken(req)
-    || String(getHeader(req, 'x-chat-history-api-token') ?? '').trim()
-    || String(getHeader(req, 'x-api-key') ?? '').trim();
+function pathToken(req) {
+  return String(firstQueryValue(req.query?.token) ?? '').trim();
 }
 
 export function authorizeChatHistoryRequest(req, env = process.env) {
@@ -49,7 +40,7 @@ export function authorizeChatHistoryRequest(req, env = process.env) {
     };
   }
 
-  const token = providedToken(req);
+  const token = pathToken(req);
   if (!token || !safeEqual(token, expectedToken)) {
     return {
       ok: false,
@@ -59,10 +50,6 @@ export function authorizeChatHistoryRequest(req, env = process.env) {
   }
 
   return { ok: true };
-}
-
-function firstQueryValue(value) {
-  return Array.isArray(value) ? value[0] : value;
 }
 
 export function parsePositiveIntQuery(value, {
@@ -104,7 +91,6 @@ export function createChatHistoriesHandler({
   return async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, X-API-Key, X-Chat-History-API-Token');
 
     if (req.method === 'OPTIONS') {
       res.status(204).end();

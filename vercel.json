@@ -9,7 +9,7 @@
       "memory": 512,
       "maxDuration": 30
     },
-    "api/chat-histories.js": {
+    "api/chat-histories/[token].js": {
       "memory": 512,
       "maxDuration": 30
     },
