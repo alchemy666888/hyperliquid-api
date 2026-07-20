@@ -99,6 +99,8 @@ vercel env add DEEPSEEK_BASE_URL
 vercel env add DEEPSEEK_MODEL
 ```
 
+Use DeepSeek API model IDs such as `deepseek-chat`, `deepseek-v4-pro`, or `deepseek-v4-flash` for `DEEPSEEK_MODEL`. Descriptive UI-style names like `deepseek-v4-pro-thinking-search` are normalized to `deepseek-v4-pro` before API calls so Vercel env vars copied from product labels do not trigger DeepSeek HTTP 400 responses.
+
 Optional Claude variables:
 
 ```bash
