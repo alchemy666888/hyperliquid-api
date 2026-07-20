@@ -1,3 +1,4 @@
+import '../lib/telegram-log-forwarder.js';
 import { pathToFileURL } from 'node:url';
 import {
   claimOneJob,

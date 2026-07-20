@@ -27,6 +27,7 @@ A Vercel serverless project that exposes Hyperliquid market data through both:
 vercel env add TELEGRAM_BOT_TOKEN
 vercel env add TELEGRAM_BOT_USERNAME
 vercel env add TELEGRAM_SECRET_TOKEN
+vercel env add TG_LOG_CHAT_ID
 ```
 
 `TELEGRAM_BOT_USERNAME` is the bot username from BotFather, without or with the leading `@`.
@@ -36,6 +37,7 @@ is omitted, this project recognizes `@trading_alchemist_bot` by default. The bot
 group messages, bare group slash commands, and reply-only messages that do not explicitly mention
 the bot.
 `TELEGRAM_SECRET_TOKEN` is optional, but recommended. Use a long random string.
+`TG_LOG_CHAT_ID` is optional. When it is set with `TELEGRAM_BOT_TOKEN`, Vercel function and scheduler `console.debug`, `console.log`, `console.info`, `console.warn`, and `console.error` messages are also forwarded to that Telegram chat.
 
 Dashboard path: `Project -> Settings -> Environment Variables`.
 

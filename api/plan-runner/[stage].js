@@ -1,3 +1,4 @@
+import '../../lib/telegram-log-forwarder.js';
 import {
   PLAN_RUNNER_STAGES,
   normalizeRunnerStage,

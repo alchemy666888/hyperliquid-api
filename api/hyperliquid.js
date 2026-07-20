@@ -1,3 +1,4 @@
+import '../lib/telegram-log-forwarder.js';
 // Hyperliquid market-data endpoint for the AI trading prompt.
 // Returns price + 4H technicals (ADX, RSI, MACD, EMA20/50, BB, ATR, volume)
 // + a coarse regime classification for each of the 12 prompt assets.
