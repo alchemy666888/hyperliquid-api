@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   alertRuleIndicatorParams,
+  buildTelegramChatHistories,
   normalizeAlertRow,
   parsePostgresConnectionString,
 } from '../lib/postgres.js';
@@ -93,4 +94,86 @@ test('rejects non-postgres connection string protocols', () => {
     () => parsePostgresConnectionString('https://db.example.com/trading'),
     /postgres:\/\/ or postgresql:\/\//,
   );
+});
+
+test('groups latest Telegram chat history rows by chat id', () => {
+  const rows = [
+    {
+      id: '1',
+      chat_id: '456',
+      direction: 'inbound',
+      message_text: 'First',
+      message_type: 'ai_chat',
+      telegram_message_id: '10',
+      created_at: '2026-07-20T05:59:00.000Z',
+      latest_message_at: '2026-07-20T06:00:00.000Z',
+      message_count: 3,
+    },
+    {
+      id: '2',
+      chat_id: '456',
+      direction: 'outbound',
+      message_text: 'Second',
+      message_type: 'ai_chat',
+      telegram_message_id: null,
+      created_at: '2026-07-20T06:00:00.000Z',
+      latest_message_at: '2026-07-20T06:00:00.000Z',
+      message_count: 3,
+    },
+    {
+      id: '3',
+      chat_id: '123',
+      direction: 'inbound',
+      message_text: '/help',
+      message_type: 'command',
+      telegram_message_id: '20',
+      created_at: '2026-07-20T05:00:00.000Z',
+      latest_message_at: '2026-07-20T05:00:00.000Z',
+      message_count: 1,
+    },
+  ];
+
+  assert.deepEqual(buildTelegramChatHistories(rows), [
+    {
+      chatId: '456',
+      latestMessageAt: '2026-07-20T06:00:00.000Z',
+      messageCount: 3,
+      messages: [
+        {
+          id: '1',
+          chatId: '456',
+          direction: 'inbound',
+          messageText: 'First',
+          messageType: 'ai_chat',
+          telegramMessageId: '10',
+          createdAt: '2026-07-20T05:59:00.000Z',
+        },
+        {
+          id: '2',
+          chatId: '456',
+          direction: 'outbound',
+          messageText: 'Second',
+          messageType: 'ai_chat',
+          telegramMessageId: null,
+          createdAt: '2026-07-20T06:00:00.000Z',
+        },
+      ],
+    },
+    {
+      chatId: '123',
+      latestMessageAt: '2026-07-20T05:00:00.000Z',
+      messageCount: 1,
+      messages: [
+        {
+          id: '3',
+          chatId: '123',
+          direction: 'inbound',
+          messageText: '/help',
+          messageType: 'command',
+          telegramMessageId: '20',
+          createdAt: '2026-07-20T05:00:00.000Z',
+        },
+      ],
+    },
+  ]);
 });
