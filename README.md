@@ -471,3 +471,33 @@ hyperliquid-api/
 ## License
 
 MIT - Free to use and modify
+
+## Next.js DeepSeek AI SDK Example
+
+A complete, runnable Next.js example for DeepSeek through the Vercel AI SDK lives in `examples/next-deepseek-ai-sdk`.
+
+The example intentionally stores only the base model ID in environment variables:
+
+```bash
+DEEPSEEK_API_KEY=sk-your-deepseek-api-key
+DEEPSEEK_MODEL=deepseek-v4-pro
+```
+
+Do not append capability suffixes such as `-thinking-search` to `DEEPSEEK_MODEL`. The example validates that the model is exactly `deepseek-v4-pro`, then enables reasoning and web search on every AI SDK request by passing:
+
+```js
+{
+  reasoning: { effort: 'high' },
+  enableSearch: true,
+}
+```
+
+Run it locally with:
+
+```bash
+cd examples/next-deepseek-ai-sdk
+npm install
+npm run dev
+```
+
+The route at `app/api/chat/route.js` uses `streamText` and emits newline-delimited JSON events with separate `reasoning` and `text` event types. The page at `app/page.jsx` reads the stream and renders the thinking process separately from the final answer.
