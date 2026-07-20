@@ -1,3 +1,4 @@
+import '../lib/telegram-log-forwarder.js';
 import { refreshMarketDataAndProcessAlerts } from '../lib/alert-runner.js';
 
 const DEFAULT_INTERVAL_MS = 10 * 60 * 1000;

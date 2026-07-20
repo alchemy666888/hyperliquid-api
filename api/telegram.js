@@ -1,3 +1,4 @@
+import '../lib/telegram-log-forwarder.js';
 import { ASSETS, getHyperliquidSnapshot } from '../lib/hyperliquid.js';
 import {
   clearDecisionTreeAlerts,
