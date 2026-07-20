@@ -26,6 +26,20 @@ test('AI config defaults to DeepSeek for existing deployments', () => {
   clearAiEnv();
 });
 
+test('AI config aliases descriptive DeepSeek V4 env model names to API model ids', () => {
+  clearAiEnv();
+  process.env.DEEPSEEK_API_KEY = 'deepseek-key';
+  process.env.DEEPSEEK_MODEL = 'deepseek-v4-pro-thinking-search';
+
+  const config = getAiConfig();
+
+  assert.equal(config.provider, 'DEEPSEEK');
+  assert.equal(config.model, 'deepseek-v4-pro');
+  assert.equal(config.rawModel, 'deepseek-v4-pro-thinking-search');
+  assert.equal(config.modelAliased, true);
+  clearAiEnv();
+});
+
 test('AI config selects Claude with CLAUDE_API_KEY', () => {
   clearAiEnv();
   process.env.AI_MODEL_PROVIDER = 'CLAUDE';
