@@ -177,9 +177,11 @@ Optional variables:
 ```bash
 vercel env add POSTGRES_SSL
 vercel env add POSTGRES_MAX_CONNECTIONS
+vercel env add CHAT_HISTORY_API_TOKEN
 ```
 
 `POSTGRES_SSL` defaults to enabled on Vercel. `POSTGRES_MAX_CONNECTIONS` defaults to `1`, which keeps serverless database usage conservative.
+`CHAT_HISTORY_API_TOKEN` is required for the chat history REST API because it returns raw Telegram conversation text.
 
 The persistence layer creates this table and index automatically on first use:
 
@@ -372,6 +374,46 @@ Example response when there is no job waiting at that stage:
   "result": {
     "event": "plan_stage_runner_noop",
     "stage": "collect"
+  }
+}
+```
+
+### Chat histories endpoint
+
+```text
+GET https://your-domain.vercel.app/api/chat-histories?limit=50&historyLimit=20
+Authorization: Bearer <CHAT_HISTORY_API_TOKEN>
+```
+
+Returns persisted Telegram chat IDs with the latest messages for each chat. `limit` controls
+how many chats are returned (max `200`), and `historyLimit` controls how many recent messages
+are returned per chat (max `100`). `X-Chat-History-API-Token` and `X-API-Key` are also accepted.
+
+```json
+{
+  "status": "ok",
+  "relatedChatIds": ["456", "123"],
+  "chatHistories": [
+    {
+      "chatId": "456",
+      "latestMessageAt": "2026-07-20T06:00:00.000Z",
+      "messageCount": 2,
+      "messages": [
+        {
+          "id": "1",
+          "chatId": "456",
+          "direction": "inbound",
+          "messageText": "Hello",
+          "messageType": "ai_chat",
+          "telegramMessageId": "11",
+          "createdAt": "2026-07-20T05:59:00.000Z"
+        }
+      ]
+    }
+  ],
+  "limits": {
+    "chatLimit": 50,
+    "historyLimit": 20
   }
 }
 ```
