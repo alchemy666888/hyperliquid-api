@@ -296,3 +296,60 @@ test('searchForContext returns setup guidance when SearchApi.io is not configure
   assert.deepEqual(context.missing, ['SEARCHAPI_API_KEY']);
   assert.deepEqual(context.results, []);
 });
+
+test('getSearchStatus reports websearch-deepseek MCP config', () => {
+  const status = getSearchStatus({
+    SEARCH_PROVIDER: 'websearch-deepseek',
+    WEBSEARCH_DEEPSEEK_MCP_URL: 'https://mcp.example.com',
+    WEBSEARCH_DEEPSEEK_TOOL: 'deepseek_web_search',
+  });
+
+  assert.equal(status.provider, 'WEBSEARCH_DEEPSEEK');
+  assert.equal(status.configured, true);
+  assert.equal(status.mcpUrlConfigured, true);
+  assert.equal(status.mcpTool, 'deepseek_web_search');
+  assert.deepEqual(status.missing, []);
+});
+
+test('searchForContext can invoke websearch-deepseek MCP over JSON-RPC', async () => {
+  const calls = [];
+  const context = await searchForContext({
+    query: 'latest Bitcoin ETF news',
+    env: {
+      SEARCH_PROVIDER: 'WEBSEARCH_DEEPSEEK',
+      WEBSEARCH_DEEPSEEK_MCP_URL: 'https://mcp.example.com/mcp',
+      WEBSEARCH_DEEPSEEK_TOOL: 'web_search',
+    },
+    now: new Date('2026-07-01T00:00:00.000Z'),
+    limit: 2,
+    fetchImpl: async (url, options) => {
+      const body = JSON.parse(options.body);
+      calls.push({ url, body });
+      return {
+        ok: true,
+        text: async () => JSON.stringify({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: body.method === 'tools/call'
+            ? {
+                content: [{
+                  type: 'text',
+                  text: JSON.stringify([
+                    { title: 'Bitcoin ETF update', link: 'https://example.com/btc-etf', snippet: 'Fresh ETF context.' },
+                  ]),
+                }],
+              }
+            : {},
+        }),
+      };
+    },
+  });
+
+  assert.equal(calls[0].body.method, 'initialize');
+  assert.equal(calls[1].body.method, 'tools/call');
+  assert.equal(calls[1].body.params.name, 'web_search');
+  assert.equal(calls[1].body.params.arguments.query, 'latest Bitcoin ETF news');
+  assert.equal(context.ok, true);
+  assert.equal(context.source, 'websearch-deepseek-mcp');
+  assert.equal(context.results[0].title, 'Bitcoin ETF update');
+});
