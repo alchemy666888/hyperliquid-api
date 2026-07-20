@@ -4,7 +4,7 @@ import {
   authorizeChatHistoryRequest,
   createChatHistoriesHandler,
   parsePositiveIntQuery,
-} from '../api/chat-histories.js';
+} from '../api/chat-histories/[token].js';
 
 function mockResponse() {
   return {
@@ -32,7 +32,7 @@ function mockResponse() {
 
 test('chat histories API rejects requests until an access token is configured', () => {
   const auth = authorizeChatHistoryRequest(
-    { headers: { authorization: 'Bearer provided' } },
+    { query: { token: 'provided' } },
     {},
   );
 
@@ -41,9 +41,9 @@ test('chat histories API rejects requests until an access token is configured', 
   assert.match(auth.error, /CHAT_HISTORY_API_TOKEN/);
 });
 
-test('chat histories API accepts bearer token with timing-safe comparison', () => {
+test('chat histories API accepts token from path variable with timing-safe comparison', () => {
   const auth = authorizeChatHistoryRequest(
-    { headers: { authorization: 'Bearer expected-token' } },
+    { query: { token: 'expected-token' } },
     { CHAT_HISTORY_API_TOKEN: 'expected-token' },
   );
 
@@ -111,8 +111,8 @@ test('chat histories API returns related chat ids and latest histories', async (
 
   await handler({
     method: 'GET',
-    headers: { authorization: 'Bearer secret' },
-    query: { limit: '5', historyLimit: '2' },
+    headers: {},
+    query: { token: 'secret', limit: '5', historyLimit: '2' },
   }, res);
 
   assert.equal(res.statusCode, 200);
@@ -134,8 +134,8 @@ test('chat histories API reports missing PostgreSQL persistence', async () => {
 
   await handler({
     method: 'GET',
-    headers: { 'x-chat-history-api-token': 'secret' },
-    query: {},
+    headers: {},
+    query: { token: 'secret' },
   }, res);
 
   assert.equal(res.statusCode, 503);

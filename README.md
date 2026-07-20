@@ -381,13 +381,13 @@ Example response when there is no job waiting at that stage:
 ### Chat histories endpoint
 
 ```text
-GET https://your-domain.vercel.app/api/chat-histories?limit=50&historyLimit=20
-Authorization: Bearer <CHAT_HISTORY_API_TOKEN>
+GET https://your-domain.vercel.app/api/chat-histories/<CHAT_HISTORY_API_TOKEN>?limit=50&historyLimit=20
 ```
 
 Returns persisted Telegram chat IDs with the latest messages for each chat. `limit` controls
 how many chats are returned (max `200`), and `historyLimit` controls how many recent messages
-are returned per chat (max `100`). `X-Chat-History-API-Token` and `X-API-Key` are also accepted.
+are returned per chat (max `100`). The token is supplied as the path variable after
+`/api/chat-histories/`.
 
 ```json
 {
