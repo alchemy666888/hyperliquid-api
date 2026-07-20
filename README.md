@@ -120,15 +120,24 @@ vercel env add DEFAULT_WEATHER_LOCATION
 
 Weather forecast times and Telegram timestamps are rendered in Hong Kong Time (`Asia/Hong_Kong`, `HKT`).
 
-Required SearchApi.io variable for `/rsh` and current market/news chat:
+Required SearchApi.io variable for `/rsh` and current market/news chat when using the default search provider:
 
 ```bash
 vercel env add SEARCHAPI_API_KEY
 ```
 
-Market/news research uses a query-tuning layer before SearchApi.io. The bot first extracts clean keywords and freshness parameters, then calls SearchApi.io with `engine=google_news`, deliberate locale params, and chronological `tbs` filtering. The raw chat sentence is preserved for the final AI analysis prompt, but it is not sent to SearchApi directly except as a malformed-extractor fallback.
+To use the `websearch-deepseek` MCP server instead of SearchApi.io, expose that MCP server through a streamable HTTP JSON-RPC endpoint and set:
 
-No-command AI chat performs SearchApi.io requests only when the request appears to need current market/news data. Casual chat and weather requests do not burn SearchApi credits. Trading, price, indicator, and tracked-symbol questions also use the existing Hyperliquid snapshot as the market source of truth. Set `SEARCHAPI_ENGINE` to change the default SearchApi.io engine; it defaults to `google_news`. Set `SEARCHAPI_RESULT_LIMIT` to tune how many results are passed to the AI; the default is `8` and the maximum is `10`.
+```bash
+vercel env add SEARCH_PROVIDER              # WEBSEARCH_DEEPSEEK
+vercel env add WEBSEARCH_DEEPSEEK_MCP_URL  # e.g. https://your-mcp-host.example.com/mcp
+```
+
+`WEBSEARCH_DEEPSEEK_TOOL` is optional and defaults to `web_search`. If your MCP gateway requires static headers, store a JSON object in `WEBSEARCH_DEEPSEEK_MCP_HEADERS`. This lets `/rsh` and current market/news chat use DeepSeek-backed web search without consuming SearchApi.io credits.
+
+Market/news research uses a query-tuning layer before the configured search provider. The bot first extracts clean keywords and freshness parameters, then calls SearchApi.io with `engine=google_news`, deliberate locale params, and chronological `tbs` filtering, or calls `websearch-deepseek` MCP with the same normalized query. The raw chat sentence is preserved for the final AI analysis prompt, but it is not sent to SearchApi directly except as a malformed-extractor fallback.
+
+No-command AI chat performs configured-provider web searches only when the request appears to need current market/news data. Casual chat and weather requests do not burn search credits. Trading, price, indicator, and tracked-symbol questions also use the existing Hyperliquid snapshot as the market source of truth. Set `SEARCHAPI_ENGINE` to change the default SearchApi.io engine; it defaults to `google_news`. Set `SEARCHAPI_RESULT_LIMIT` to tune how many results are passed to the AI; the default is `8` and the maximum is `10`.
 
 Optional query extraction/cache variables:
 
