@@ -126,6 +126,15 @@ Required SearchApi.io variable for `/rsh` and current market/news chat when usin
 vercel env add SEARCHAPI_API_KEY
 ```
 
+To use Tinyfish instead of SearchApi.io, set the provider and store the Tinyfish API key as Vercel environment variables:
+
+```bash
+vercel env add SEARCH_PROVIDER       # TINYFISH
+vercel env add TINYFISH_API_KEY
+```
+
+Tinyfish calls `https://api.search.tinyfish.ai?query=...` with the API key in the `X-API-Key` header. `TINYFISH_SEARCH_API_KEY` is also accepted as a fallback variable name.
+
 To use the `websearch-deepseek` MCP server instead of SearchApi.io, expose that MCP server through a streamable HTTP JSON-RPC endpoint and set:
 
 ```bash
@@ -135,9 +144,9 @@ vercel env add WEBSEARCH_DEEPSEEK_MCP_URL  # e.g. https://your-mcp-host.example.
 
 `WEBSEARCH_DEEPSEEK_TOOL` is optional and defaults to `web_search`. If your MCP gateway requires static headers, store a JSON object in `WEBSEARCH_DEEPSEEK_MCP_HEADERS`. This lets `/rsh` and current market/news chat use DeepSeek-backed web search without consuming SearchApi.io credits.
 
-Market/news research uses a query-tuning layer before the configured search provider. The bot first extracts clean keywords and freshness parameters, then calls SearchApi.io with `engine=google_news`, deliberate locale params, and chronological `tbs` filtering, or calls `websearch-deepseek` MCP with the same normalized query. The raw chat sentence is preserved for the final AI analysis prompt, but it is not sent to SearchApi directly except as a malformed-extractor fallback.
+Market/news research uses a query-tuning layer before the configured search provider. The bot first extracts clean keywords and freshness parameters, then calls SearchApi.io with `engine=google_news`, deliberate locale params, and chronological `tbs` filtering, calls Tinyfish with the normalized `query`, or calls `websearch-deepseek` MCP with the same normalized query. The raw chat sentence is preserved for the final AI analysis prompt, but it is not sent to SearchApi directly except as a malformed-extractor fallback.
 
-No-command AI chat performs configured-provider web searches only when the request appears to need current market/news data. Casual chat and weather requests do not burn search credits. Trading, price, indicator, and tracked-symbol questions also use the existing Hyperliquid snapshot as the market source of truth. Set `SEARCHAPI_ENGINE` to change the default SearchApi.io engine; it defaults to `google_news`. Set `SEARCHAPI_RESULT_LIMIT` to tune how many results are passed to the AI; the default is `8` and the maximum is `10`.
+No-command AI chat performs configured-provider web searches only when the request appears to need current market/news data. Casual chat and weather requests do not burn search credits. Trading, price, indicator, and tracked-symbol questions also use the existing Hyperliquid snapshot as the market source of truth. Set `SEARCH_PROVIDER=TINYFISH` and `TINYFISH_API_KEY` to use Tinyfish. Set `SEARCHAPI_ENGINE` to change the default SearchApi.io engine; it defaults to `google_news`. Set `SEARCHAPI_RESULT_LIMIT` to tune how many results are passed to the AI; the default is `8` and the maximum is `10`.
 
 Optional query extraction/cache variables:
 
@@ -284,7 +293,7 @@ Required Vercel environment variables for this workflow:
 ```bash
 vercel env add POSTGRES_URL
 vercel env add TELEGRAM_BOT_TOKEN
-vercel env add SEARCHAPI_API_KEY
+vercel env add SEARCHAPI_API_KEY  # or set SEARCH_PROVIDER=TINYFISH and TINYFISH_API_KEY
 vercel env add AI_MODEL_PROVIDER
 vercel env add DEEPSEEK_API_KEY
 ```

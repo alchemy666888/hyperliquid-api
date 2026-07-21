@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   createSearchTool,
+  createTinyfishSearchTool,
   getSearchStatus,
   parseSearchOutput,
   searchForContext,
@@ -15,6 +16,92 @@ test('getSearchStatus reports missing SearchApi.io variables safely', () => {
   assert.equal(status.apiKeyConfigured, false);
   assert.equal(status.engine, 'google_news');
   assert.deepEqual(status.missing, ['SEARCHAPI_API_KEY']);
+});
+
+
+test('getSearchStatus reports Tinyfish config', () => {
+  const status = getSearchStatus({
+    SEARCH_PROVIDER: 'tinyfish',
+    TINYFISH_API_KEY: 'tinyfish-key',
+    SEARCH_RESULT_LIMIT: '4',
+  });
+
+  assert.equal(status.provider, 'TINYFISH');
+  assert.equal(status.configured, true);
+  assert.equal(status.apiKeyConfigured, true);
+  assert.equal(status.resultLimit, 4);
+  assert.deepEqual(status.missing, []);
+});
+
+test('createTinyfishSearchTool calls Tinyfish and returns compact results JSON', async () => {
+  let requestedUrl;
+  let requestOptions;
+  const tool = createTinyfishSearchTool({
+    provider: 'TINYFISH',
+    apiKey: 'tinyfish-key',
+    resultLimit: 3,
+  }, {
+    fetchImpl: async (url, options) => {
+      requestedUrl = url;
+      requestOptions = options;
+      return {
+        ok: true,
+        json: async () => ({
+          results: [
+            {
+              title: 'Best ramen in NYC',
+              url: 'https://example.com/ramen',
+              description: 'A useful Tinyfish result.',
+              source: 'Example Guide',
+            },
+          ],
+        }),
+      };
+    },
+  });
+
+  const output = await tool.invoke('best ramen in nyc');
+  const results = JSON.parse(output);
+
+  assert.equal(requestedUrl.href, 'https://api.search.tinyfish.ai/?query=best+ramen+in+nyc');
+  assert.equal(requestOptions.headers['X-API-Key'], 'tinyfish-key');
+  assert.deepEqual(results, [
+    {
+      title: 'Best ramen in NYC',
+      source: 'Example Guide',
+      date: '',
+      link: 'https://example.com/ramen',
+      snippet: 'A useful Tinyfish result.',
+    },
+  ]);
+});
+
+test('searchForContext can use Tinyfish provider', async () => {
+  let requestedUrl;
+  const context = await searchForContext({
+    query: 'latest Bitcoin ETF news',
+    env: {
+      SEARCH_PROVIDER: 'TINYFISH',
+      TINYFISH_API_KEY: 'tinyfish-key',
+    },
+    now: new Date('2026-07-01T00:00:00.000Z'),
+    fetchImpl: async url => {
+      requestedUrl = url;
+      return {
+        ok: true,
+        json: async () => ({
+          data: [
+            { title: 'Bitcoin ETF update', link: 'https://example.com/btc-etf', snippet: 'Fresh ETF context.' },
+          ],
+        }),
+      };
+    },
+  });
+
+  assert.equal(requestedUrl.href, 'https://api.search.tinyfish.ai/?query=latest+Bitcoin+ETF+news');
+  assert.equal(context.ok, true);
+  assert.equal(context.source, 'tinyfish');
+  assert.equal(context.results[0].title, 'Bitcoin ETF update');
 });
 
 test('parseSearchOutput normalizes SearchApi.io JSON', () => {
