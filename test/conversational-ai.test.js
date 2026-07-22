@@ -353,6 +353,27 @@ test('answerStatelessAiChat converts common Markdown formatting to Telegram HTML
   assert.doesNotMatch(reply.text, /\*\*Morning plan\*\*/);
 });
 
+test('answerStatelessAiChat keeps long AI replies complete for Telegram chunking', async () => {
+  const longReply = 'long ai reply '.repeat(360);
+  const reply = await answerStatelessAiChat({
+    message: 'Give me a detailed answer',
+    getSnapshot: async () => {
+      throw new Error('non-market chat should not fetch market snapshot');
+    },
+    getSearch: async () => {
+      throw new Error('daily-life chat should not call search');
+    },
+    deepSeekChat: async () => ({
+      ok: true,
+      text: longReply,
+    }),
+  });
+
+  assert.equal(reply.parseMode, 'HTML');
+  assert.equal(reply.text, longReply);
+  assert.doesNotMatch(reply.text, /\[Reply shortened for Telegram\.\]/);
+});
+
 test('sanitizeTelegramAiHtml closes unbalanced allowed tags', () => {
   assert.equal(
     sanitizeTelegramAiHtml('Run <code>npm test'),

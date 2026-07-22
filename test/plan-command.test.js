@@ -336,7 +336,7 @@ test('formatPlanReply includes skipped alert note for non-tracked symbols', () =
   assert.match(reply.text, /BTCUSDT/);
 });
 
-test('formatPlanReply truncates oversized Telegram replies', () => {
+test('formatPlanReply keeps oversized replies complete for client chunking', () => {
   const reply = formatPlanReply({
     pipeline: {
       symbol: 'MU',
@@ -350,11 +350,12 @@ test('formatPlanReply truncates oversized Telegram replies', () => {
     },
   });
 
-  assert.ok(reply.text.length <= 3900);
-  assert.match(reply.text, /\[Reply shortened for Telegram\.\]/);
+  assert.ok(reply.text.length > 3900);
+  assert.doesNotMatch(reply.text, /\[Reply shortened for Telegram\.\]/);
+  assert.match(reply.text, new RegExp('x{5000}'));
 });
 
-test('formatPlanReply keeps truncated code entities balanced', () => {
+test('formatPlanReply keeps oversized code entities balanced', () => {
   const reply = formatPlanReply({
     pipeline: {
       symbol: 'MU',
@@ -374,8 +375,8 @@ test('formatPlanReply keeps truncated code entities balanced', () => {
   const openCodeCount = reply.text.match(/<code>/g)?.length ?? 0;
   const closeCodeCount = reply.text.match(/<\/code>/g)?.length ?? 0;
 
-  assert.ok(reply.text.length <= 3900);
-  assert.match(reply.text, /\[Reply shortened for Telegram\.\]/);
+  assert.ok(reply.text.length > 3900);
+  assert.doesNotMatch(reply.text, /\[Reply shortened for Telegram\.\]/);
   assert.equal(openCodeCount, closeCodeCount);
 });
 
