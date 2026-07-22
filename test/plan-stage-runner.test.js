@@ -84,7 +84,9 @@ test('runPlanStageOnce marks failed and pushes a message when stage processing t
     reapStaleJobs: async () => ({ reaped: [], failed: [] }),
     claimOneJobAtStage: async () => runnerJob({ stage: 'infer' }),
     advanceOneStage: async () => {
-      throw new Error('AI unavailable');
+      const error = new Error('AI unavailable');
+      error.stage = 'fact_check';
+      throw error;
     },
     markFailed: async (client, jobId, reason) => {
       failed = { client, jobId, reason };
@@ -96,7 +98,11 @@ test('runPlanStageOnce marks failed and pushes a message when stage processing t
   });
 
   assert.equal(result.event, 'plan_stage_runner_failed');
+  assert.equal(result.stage, 'fact_check');
+  assert.equal(result.runnerStage, 'infer');
   assert.deepEqual(failed, { client: 'client', jobId: 42, reason: 'AI unavailable' });
   assert.equal(sent.length, 1);
   assert.match(sent[0].text, /SwingScope plan failed/);
+  assert.match(sent[0].text, /Stage/);
+  assert.match(sent[0].text, /fact_check/);
 });
