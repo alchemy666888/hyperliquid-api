@@ -7,6 +7,8 @@ function clearAiEnv() {
   delete process.env.DEEPSEEK_API_KEY;
   delete process.env.DEEPSEEK_BASE_URL;
   delete process.env.DEEPSEEK_MODEL;
+  delete process.env.DEEPSEEK_SEARCH_ENABLE;
+  delete process.env.DEEPSEEK_SEARCH_ENABLE_TASKS;
   delete process.env.CLAUDE_API_KEY;
   delete process.env.CLAUDE_BASE_URL;
   delete process.env.CLAUDE_MODEL;
@@ -128,6 +130,73 @@ test('requestAiChat sends Claude Messages API shape without DeepSeek response_fo
   assert.equal(requestBody.response_format, undefined);
   assert.equal(requestBody.search_enable, undefined);
   assert.equal(requestBody.temperature, undefined);
+  clearAiEnv();
+});
+
+
+test('requestAiChat does not send DeepSeek search_enable by default', async () => {
+  clearAiEnv();
+  process.env.DEEPSEEK_API_KEY = 'deepseek-key';
+  let requestBody;
+
+  const result = await requestAiChat({
+    messages: [{ role: 'user', content: 'hello' }],
+    fetchImpl: async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'Hi.' } }] }),
+      };
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(requestBody.search_enable, undefined);
+  clearAiEnv();
+});
+
+test('requestAiChat sends DeepSeek search_enable when explicitly requested', async () => {
+  clearAiEnv();
+  process.env.DEEPSEEK_API_KEY = 'deepseek-key';
+  let requestBody;
+
+  const result = await requestAiChat({
+    messages: [{ role: 'user', content: 'latest BTC news' }],
+    searchEnabled: true,
+    fetchImpl: async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'Searched answer.' } }] }),
+      };
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(requestBody.search_enable, true);
+  clearAiEnv();
+});
+
+test('requestAiJson sends DeepSeek search_enable for enabled task names', async () => {
+  clearAiEnv();
+  process.env.DEEPSEEK_API_KEY = 'deepseek-key';
+  process.env.DEEPSEEK_SEARCH_ENABLE_TASKS = 'extractor';
+  let requestBody;
+
+  const result = await requestAiJson({
+    task: 'extractor',
+    messages: [{ role: 'user', content: 'latest BTC news' }],
+    fetchImpl: async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: '{"needs_search":true}' } }] }),
+      };
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(requestBody.search_enable, true);
   clearAiEnv();
 });
 
