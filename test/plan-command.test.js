@@ -354,6 +354,31 @@ test('formatPlanReply truncates oversized Telegram replies', () => {
   assert.match(reply.text, /\[Reply shortened for Telegram\.\]/);
 });
 
+test('formatPlanReply keeps truncated code entities balanced', () => {
+  const reply = formatPlanReply({
+    pipeline: {
+      symbol: 'MU',
+      resolvedSymbol: 'MU',
+      alertable: true,
+      plan: {
+        analysisSummary: 'Short summary.',
+        long: {
+          entries: [{ type: 'limit', price: '1'.repeat(5000) }],
+          stop: 95,
+          targets: [110],
+        },
+        conditions: [],
+      },
+    },
+  });
+  const openCodeCount = reply.text.match(/<code>/g)?.length ?? 0;
+  const closeCodeCount = reply.text.match(/<\/code>/g)?.length ?? 0;
+
+  assert.ok(reply.text.length <= 3900);
+  assert.match(reply.text, /\[Reply shortened for Telegram\.\]/);
+  assert.equal(openCodeCount, closeCodeCount);
+});
+
 test('enqueuePlanJob returns usage when no symbol is supplied', async () => {
   const reply = await enqueuePlanJob({ args: [], chatId: 123 });
 

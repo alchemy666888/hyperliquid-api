@@ -367,6 +367,13 @@ test('sanitizeTelegramAiHtml repairs misnested allowed tags', () => {
   );
 });
 
+test('sanitizeTelegramAiHtml treats Markdown code contents as escaped text', () => {
+  assert.equal(
+    sanitizeTelegramAiHtml('Use `<code>literal</code>` tags'),
+    'Use <code>&lt;code&gt;literal&lt;/code&gt;</code> tags',
+  );
+});
+
 test('answerStatelessAiChat returns setup guidance when AI is unavailable', async () => {
   const reply = await answerStatelessAiChat({
     message: 'hello',
