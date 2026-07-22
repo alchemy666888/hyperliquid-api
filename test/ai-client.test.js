@@ -290,6 +290,27 @@ test('requestAiJson parses Claude text JSON responses', async () => {
   clearAiEnv();
 });
 
+test('requestAiJson aborts slow provider requests with a clear timeout error', async () => {
+  clearAiEnv();
+  process.env.DEEPSEEK_API_KEY = 'deepseek-key';
+
+  const result = await requestAiJson({
+    messages: [{ role: 'user', content: 'Return JSON.' }],
+    timeoutMs: 1,
+    fetchImpl: async (_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => {
+        const error = new Error('aborted');
+        error.name = 'AbortError';
+        reject(error);
+      }, { once: true });
+    }),
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /timed out after 1ms/);
+  clearAiEnv();
+});
+
 test('requestAiChat rejects unsupported AI_MODEL_PROVIDER values', async () => {
   clearAiEnv();
   process.env.AI_MODEL_PROVIDER = 'OPENAI';

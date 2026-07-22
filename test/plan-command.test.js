@@ -253,6 +253,39 @@ test('assemblePlan degrades malformed AI JSON to a prose plan with zero conditio
   assert.match(result.plan.analysisSummary, /Neutral inference survived/);
 });
 
+test('assemblePlan passes a bounded timeout to final AI assembly', async () => {
+  const previous = process.env.PLAN_ASSEMBLY_TIMEOUT_MS;
+  process.env.PLAN_ASSEMBLY_TIMEOUT_MS = '1234';
+  let timeoutMs;
+
+  try {
+    const result = await assemblePlan({
+      symbol: 'BTCUSDT',
+      resolvedSymbol: 'BTCUSDT',
+      inference: 'BTC inference survived.',
+      direction: 'both',
+      horizon: '1-4w',
+      deps: {
+        aiJson: async (request) => {
+          timeoutMs = request.timeoutMs;
+          return { ok: false, error: 'DeepSeek request timed out after 1234ms.' };
+        },
+      },
+    });
+
+    assert.equal(timeoutMs, 1234);
+    assert.equal(result.ok, false);
+    assert.match(result.error, /timed out/);
+    assert.match(result.plan.analysisSummary, /BTC inference survived/);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.PLAN_ASSEMBLY_TIMEOUT_MS;
+    } else {
+      process.env.PLAN_ASSEMBLY_TIMEOUT_MS = previous;
+    }
+  }
+});
+
 test('formatPlanReply separates analysis, execution, and saved alert status', () => {
   const reply = formatPlanReply({
     pipeline: {
