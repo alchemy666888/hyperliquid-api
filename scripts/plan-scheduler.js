@@ -31,12 +31,17 @@ export function readPlanSchedulerIntervalMs() {
   return readPositiveIntEnv('PLAN_SCHEDULER_INTERVAL_MS', DEFAULT_INTERVAL_MS);
 }
 
-function failureMessage(job, reason) {
-  return telegramTableMessage('SwingScope plan failed', [
+function failureMessage(job, reason, stage) {
+  const failedStage = stage ?? job?.stage;
+  const rows = [
     ['Symbol', job?.resolvedSymbol ?? job?.symbol ?? 'unknown'],
+  ];
+  if (failedStage) rows.push(['Stage', failedStage]);
+  rows.push(
     ['Status', reason || 'The plan workflow could not complete.'],
     ['Next', 'Try /plan again later.'],
-  ]);
+  );
+  return telegramTableMessage('SwingScope plan failed', rows);
 }
 
 async function persistFailureMessage({ chatId, reply, deps = {} }) {
@@ -64,7 +69,7 @@ async function pushFailure(job, reason, deps = {}) {
     return false;
   }
 
-  const reply = failureMessage(job, reason);
+  const reply = failureMessage(job, reason, job?.stage);
   await sender(token, chatId, reply.text, { parseMode: reply.parseMode });
   await persistFailureMessage({ chatId, reply, deps });
   return true;
@@ -121,13 +126,14 @@ export async function runOnce(deps = {}) {
         };
       } catch (error) {
         const reason = error?.message ?? 'Plan stage failed.';
+        const failedStage = error?.stage ?? job.stage;
         await failJob(client, job.id, reason);
-        await pushFailure(job, reason, deps);
+        await pushFailure({ ...job, stage: failedStage }, reason, deps);
         return {
           event: 'plan_scheduler_tick_failed',
           jobId: job.id,
           symbol: job.resolvedSymbol ?? job.symbol,
-          stage: job.stage,
+          stage: failedStage,
           error: reason,
         };
       }
