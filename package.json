@@ -9,7 +9,8 @@
     "alert-scheduler": "node scripts/alert-scheduler.js",
     "plan-scheduler": "node scripts/plan-scheduler.js",
     "plan-scheduler-once": "node scripts/plan-scheduler.js --once",
-    "deploy": "vercel deploy --prod"
+    "deploy": "vercel deploy --prod",
+    "market-stream-worker": "node scripts/market-stream-worker.js"
   },
   "keywords": [
     "hyperliquid",
