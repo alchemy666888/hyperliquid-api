@@ -88,58 +88,75 @@ export async function runOnce(deps = {}) {
   try {
     console.log(`Plan scheduler tick started at ${startedAt.toISOString()}`);
     const withClient = deps.withPlanJobsClient ?? withPlanJobsClient;
-    const result = await withClient(async (client) => {
-      const config = {
-        ...readPlanJobConfig(),
-        ...(deps.staleMs ? { staleMs: deps.staleMs } : {}),
-        ...(deps.maxRetries ? { maxRetries: deps.maxRetries } : {}),
-      };
-      const reap = deps.reapStaleJobs ?? reapStaleJobs;
-      const claim = deps.claimOneJob ?? claimOneJob;
-      const advance = deps.advanceOneStage ?? advanceOneStage;
-      const failJob = deps.markFailed ?? markFailed;
+    const config = {
+      ...readPlanJobConfig(),
+      ...(deps.staleMs ? { staleMs: deps.staleMs } : {}),
+      ...(deps.maxRetries ? { maxRetries: deps.maxRetries } : {}),
+    };
+    const reap = deps.reapStaleJobs ?? reapStaleJobs;
+    const claim = deps.claimOneJob ?? claimOneJob;
+    const advance = deps.advanceOneStage ?? advanceOneStage;
+    const failJob = deps.markFailed ?? markFailed;
+
+    const claimResult = await withClient(async (client) => {
       const reaped = await reap(client, config);
-
-      for (const failedJob of reaped.failed ?? []) {
-        await pushFailure(failedJob, failedJob.error, deps);
-      }
-
       const job = await claim(client);
-      if (!job) {
-        return {
-          event: 'plan_scheduler_tick_noop',
-          reaped: reaped.reaped?.length ?? 0,
-          failed: reaped.failed?.length ?? 0,
-        };
-      }
-
-      try {
-        const advanced = await advance(job, { ...deps, client });
-        return {
-          event: 'plan_scheduler_tick_complete',
-          jobId: job.id,
-          symbol: job.resolvedSymbol ?? job.symbol,
-          stage: job.stage,
-          advanced,
-          reaped: reaped.reaped?.length ?? 0,
-          failed: reaped.failed?.length ?? 0,
-        };
-      } catch (error) {
-        const reason = error?.message ?? 'Plan stage failed.';
-        const failedStage = error?.stage ?? job.stage;
-        await failJob(client, job.id, reason);
-        await pushFailure({ ...job, stage: failedStage }, reason, deps);
-        return {
-          event: 'plan_scheduler_tick_failed',
-          jobId: job.id,
-          symbol: job.resolvedSymbol ?? job.symbol,
-          stage: failedStage,
-          error: reason,
-        };
-      }
+      return { job, reaped };
     });
 
-    const output = result ?? { event: 'plan_scheduler_unavailable', reason: 'postgres-not-configured' };
+    if (!claimResult) {
+      const output = { event: 'plan_scheduler_unavailable', reason: 'postgres-not-configured' };
+      console.log(JSON.stringify({
+        ...output,
+        timestamp: new Date().toISOString(),
+      }));
+      return output;
+    }
+
+    const { job, reaped } = claimResult;
+    for (const failedJob of reaped.failed ?? []) {
+      await pushFailure(failedJob, failedJob.error, deps);
+    }
+
+    if (!job) {
+      const output = {
+        event: 'plan_scheduler_tick_noop',
+        reaped: reaped.reaped?.length ?? 0,
+        failed: reaped.failed?.length ?? 0,
+      };
+      console.log(JSON.stringify({
+        ...output,
+        timestamp: new Date().toISOString(),
+      }));
+      return output;
+    }
+
+    let output;
+    try {
+      const advanced = await advance(job, deps);
+      output = {
+        event: 'plan_scheduler_tick_complete',
+        jobId: job.id,
+        symbol: job.resolvedSymbol ?? job.symbol,
+        stage: job.stage,
+        advanced,
+        reaped: reaped.reaped?.length ?? 0,
+        failed: reaped.failed?.length ?? 0,
+      };
+    } catch (error) {
+      const reason = error?.message ?? 'Plan stage failed.';
+      const failedStage = error?.stage ?? job.stage;
+      await withClient(client => failJob(client, job.id, reason));
+      await pushFailure({ ...job, stage: failedStage }, reason, deps);
+      output = {
+        event: 'plan_scheduler_tick_failed',
+        jobId: job.id,
+        symbol: job.resolvedSymbol ?? job.symbol,
+        stage: failedStage,
+        error: reason,
+      };
+    }
+
     console.log(JSON.stringify({
       ...output,
       timestamp: new Date().toISOString(),
