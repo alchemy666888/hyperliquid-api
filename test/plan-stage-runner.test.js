@@ -38,8 +38,16 @@ test('runPlanStageOnce rejects unsupported stages before touching dependencies',
 
 test('runPlanStageOnce claims and advances one job at the requested stage', async () => {
   const calls = [];
+  let clientCheckedOut = false;
   const result = await runPlanStageOnce('levels', {
-    withPlanJobsClient: async (fn) => fn('client'),
+    withPlanJobsClient: async (fn) => {
+      clientCheckedOut = true;
+      try {
+        return await fn('client');
+      } finally {
+        clientCheckedOut = false;
+      }
+    },
     reapStaleJobs: async (client) => {
       assert.equal(client, 'client');
       return { reaped: [], failed: [] };
@@ -50,7 +58,8 @@ test('runPlanStageOnce claims and advances one job at the requested stage', asyn
     },
     advanceOneStage: async (job, deps) => {
       assert.equal(job.stage, 'levels');
-      assert.equal(deps.client, 'client');
+      assert.equal(clientCheckedOut, false);
+      assert.equal(deps.client, undefined);
       return { stage: 'levels', nextStage: 'plan' };
     },
   });
@@ -77,18 +86,28 @@ test('runPlanStageOnce no-ops when no job exists for that stage', async () => {
 
 test('runPlanStageOnce marks failed and pushes a message when stage processing throws', async () => {
   let failed;
+  let clientCheckedOut = false;
   const sent = [];
   const result = await runPlanStageOnce('infer', {
     telegramBotToken: 'token',
-    withPlanJobsClient: async (fn) => fn('client'),
+    withPlanJobsClient: async (fn) => {
+      clientCheckedOut = true;
+      try {
+        return await fn('client');
+      } finally {
+        clientCheckedOut = false;
+      }
+    },
     reapStaleJobs: async () => ({ reaped: [], failed: [] }),
     claimOneJobAtStage: async () => runnerJob({ stage: 'infer' }),
     advanceOneStage: async () => {
+      assert.equal(clientCheckedOut, false);
       const error = new Error('AI unavailable');
       error.stage = 'fact_check';
       throw error;
     },
     markFailed: async (client, jobId, reason) => {
+      assert.equal(clientCheckedOut, true);
       failed = { client, jobId, reason };
     },
     sendTelegramMessage: async (token, chatId, text) => {

@@ -51,11 +51,20 @@ test('runOnce is a cheap no-op when no jobs are runnable', async () => {
 
 test('runOnce advances exactly one claimed job stage', async () => {
   const calls = [];
+  let clientCheckedOut = false;
   const result = await runOnce({
-    withPlanJobsClient: async (fn) => fn('client'),
+    withPlanJobsClient: async (fn) => {
+      clientCheckedOut = true;
+      try {
+        return await fn('client');
+      } finally {
+        clientCheckedOut = false;
+      }
+    },
     reapStaleJobs: async () => ({ reaped: [], failed: [] }),
     claimOneJob: async () => schedulerJob({ stage: 'infer' }),
     advanceOneStage: async (job, deps) => {
+      assert.equal(clientCheckedOut, false);
       calls.push({ job, client: deps.client });
       return { stage: job.stage, nextStage: 'levels' };
     },
@@ -65,24 +74,34 @@ test('runOnce advances exactly one claimed job stage', async () => {
   assert.equal(result.jobId, 42);
   assert.equal(result.stage, 'infer');
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].client, 'client');
+  assert.equal(calls[0].client, undefined);
 });
 
 test('runOnce marks failed and pushes a graceful failure message when a stage throws', async () => {
   let failed;
+  let clientCheckedOut = false;
   const sent = [];
   const persisted = [];
   const result = await runOnce({
     telegramBotToken: 'token',
-    withPlanJobsClient: async (fn) => fn('client'),
+    withPlanJobsClient: async (fn) => {
+      clientCheckedOut = true;
+      try {
+        return await fn('client');
+      } finally {
+        clientCheckedOut = false;
+      }
+    },
     reapStaleJobs: async () => ({ reaped: [], failed: [] }),
     claimOneJob: async () => schedulerJob({ stage: 'levels' }),
     advanceOneStage: async () => {
+      assert.equal(clientCheckedOut, false);
       const error = new Error('AI unavailable');
       error.stage = 'levels';
       throw error;
     },
     markFailed: async (client, jobId, reason) => {
+      assert.equal(clientCheckedOut, true);
       failed = { client, jobId, reason };
       return schedulerJob({ status: 'failed', error: reason });
     },
