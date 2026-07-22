@@ -4,6 +4,7 @@ import {
   answerResearchChat,
   answerStatelessAiChat,
   isWebSearchRelatedRequest,
+  sanitizeTelegramAiHtml,
 } from '../lib/conversational-ai.js';
 
 const snapshot = {
@@ -350,6 +351,20 @@ test('answerStatelessAiChat converts common Markdown formatting to Telegram HTML
   assert.match(reply.text, /<b>Morning plan<\/b>/);
   assert.match(reply.text, /<code>top priority<\/code>/);
   assert.doesNotMatch(reply.text, /\*\*Morning plan\*\*/);
+});
+
+test('sanitizeTelegramAiHtml closes unbalanced allowed tags', () => {
+  assert.equal(
+    sanitizeTelegramAiHtml('Run <code>npm test'),
+    'Run <code>npm test</code>',
+  );
+});
+
+test('sanitizeTelegramAiHtml repairs misnested allowed tags', () => {
+  assert.equal(
+    sanitizeTelegramAiHtml('<b>Run <code>npm test</b></code> now'),
+    '<b>Run <code>npm test</code></b> now',
+  );
 });
 
 test('answerStatelessAiChat returns setup guidance when AI is unavailable', async () => {
