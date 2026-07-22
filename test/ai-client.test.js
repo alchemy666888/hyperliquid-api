@@ -177,6 +177,75 @@ test('requestAiChat sends DeepSeek search_enable when explicitly requested', asy
   clearAiEnv();
 });
 
+test('requestAiChat retries DeepSeek empty text when max tokens are exhausted', async () => {
+  clearAiEnv();
+  process.env.DEEPSEEK_API_KEY = 'deepseek-key';
+  const requestBodies = [];
+
+  const result = await requestAiChat({
+    messages: [{ role: 'user', content: 'fact check BTCUSDT' }],
+    maxTokens: 900,
+    fetchImpl: async (_url, options) => {
+      requestBodies.push(JSON.parse(options.body));
+      return {
+        ok: true,
+        json: async () => requestBodies.length === 1
+          ? {
+            choices: [{
+              finish_reason: 'length',
+              message: {
+                reasoning_content: 'Reasoning consumed the small output budget.',
+                content: '',
+              },
+            }],
+            usage: {
+              completion_tokens: 900,
+              completion_tokens_details: { reasoning_tokens: 900 },
+            },
+          }
+          : {
+            choices: [{
+              finish_reason: 'stop',
+              message: { content: 'Verified BTCUSDT facts.' },
+            }],
+            usage: { completion_tokens: 31 },
+          },
+      };
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.text, 'Verified BTCUSDT facts.');
+  assert.equal(result.retriedEmptyText, true);
+  assert.equal(requestBodies.length, 2);
+  assert.equal(requestBodies[0].max_tokens, 900);
+  assert.equal(requestBodies[1].max_tokens, 2700);
+  clearAiEnv();
+});
+
+test('requestAiChat reports DeepSeek empty text finish reasons clearly', async () => {
+  clearAiEnv();
+  process.env.DEEPSEEK_API_KEY = 'deepseek-key';
+
+  const result = await requestAiChat({
+    messages: [{ role: 'user', content: 'hello' }],
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({
+        choices: [{
+          finish_reason: 'content_filter',
+          message: { content: '' },
+        }],
+      }),
+    }),
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /filtered/);
+  assert.equal(result.finishReason, 'content_filter');
+  clearAiEnv();
+});
+
 test('requestAiJson sends DeepSeek search_enable for enabled task names', async () => {
   clearAiEnv();
   process.env.DEEPSEEK_API_KEY = 'deepseek-key';
