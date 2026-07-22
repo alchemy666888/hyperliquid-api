@@ -563,3 +563,148 @@ npm run dev
 ```
 
 The route at `app/api/chat/route.js` uses `streamText` and emits newline-delimited JSON events with separate `reasoning` and `text` event types. The page at `app/page.jsx` reads the stream and renders the thinking process separately from the final answer.
+
+## BTC Intraday Market-Data Profile
+
+The legacy endpoint is unchanged:
+
+```text
+GET /api/hyperliquid
+```
+
+It still returns the existing 4-hour Hyperliquid technical-analysis snapshot, top-level `timestamp`, `interval`, `source`, `prices`, `assets`, `status`, `persistence`, and `alerts` fields, and continues to process existing Telegram decision-tree alerts.
+
+The new additive BTC workflow is available with:
+
+```text
+GET /api/hyperliquid?profile=btc-intraday
+GET /api/hyperliquid?stored=latest&profile=btc-intraday
+```
+
+This profile returns all legacy fields plus `schemaVersion: "2.0"` and `btcIntraday`. The stored route returns the latest persisted JSONB snapshot. If that record is legacy-only, the response says the `btcIntraday` section is unavailable instead of fabricating data.
+
+### Example enriched response
+
+```json
+{
+  "timestamp": "2026-07-22T00:00:00.000Z",
+  "interval": "4h",
+  "source": "hyperliquid",
+  "prices": { "BTCUSDT": 100000 },
+  "assets": [],
+  "status": "success",
+  "persistence": { "enabled": true, "saved": true, "id": "123" },
+  "alerts": { "enabled": true, "checked": 2, "triggered": 0 },
+  "schemaVersion": "2.0",
+  "btcIntraday": {
+    "symbol": "BTCUSDT",
+    "asOf": "2026-07-22T00:00:01.000Z",
+    "timeframes": {
+      "5m": {
+        "current": {
+          "interval": "5m",
+          "openTime": "2026-07-22T00:00:00.000Z",
+          "closeTime": "2026-07-22T00:04:59.999Z",
+          "isClosed": false,
+          "open": 100000,
+          "high": 100500,
+          "low": 99800,
+          "close": 100200,
+          "baseAssetVolume": 120.5,
+          "quoteAssetVolume": 12074100,
+          "vwap": 100200,
+          "numberOfTrades": 15000,
+          "takerBuyBaseVolume": 61.1,
+          "takerBuyQuoteVolume": 6122220,
+          "units": { "baseAssetVolume": "BTC", "quoteAssetVolume": "USDT", "vwap": "USDT per BTC" }
+        },
+        "completed": {}
+      },
+      "15m": { "current": {}, "completed": {} },
+      "1h": { "current": {}, "completed": {} }
+    },
+    "perpetual": {
+      "source": "Hyperliquid",
+      "status": "live",
+      "method": "info/metaAndAssetCtxs universe-index match",
+      "markPrice": 100000,
+      "midPrice": 100010,
+      "oraclePrice": 99990,
+      "fundingRateHourly": 0.00001,
+      "fundingAprSimple": 0.0876,
+      "openInterestBtc": 12500,
+      "openInterestUsd": 1250000000
+    },
+    "liquidations": {
+      "source": "Binance USD-M liquidation stream via Redis",
+      "status": "live",
+      "exactness": "exchange-reported-snapshots",
+      "windows": {
+        "5m": { "longLiquidationUsd": 1000, "shortLiquidationUsd": 500, "totalLiquidationUsd": 1500, "eventCount": 2 },
+        "15m": {},
+        "1h": {}
+      }
+    },
+    "options": {
+      "source": "Deribit",
+      "currency": "BTC",
+      "ivUnits": "percentage points",
+      "expiries": [
+        {
+          "expiry": "2026-07-24T08:00:00.000Z",
+          "contracts": [
+            { "instrumentName": "BTC-24JUL26-100000-C", "strike": 100000, "optionType": "call", "markIv": 52.5, "delta": 0.5 }
+          ],
+          "analytics": {
+            "atm": { "strike": 100000, "iv": 52.5, "method": "nearest-strike" },
+            "call25Delta": { "iv": 55, "method": "linear-delta-interpolation" },
+            "put25Delta": { "iv": 58, "method": "nearest-delta fallback" },
+            "riskReversal25d": -3,
+            "butterfly25d": 4
+          }
+        }
+      ]
+    },
+    "quality": { "status": "partial", "completeness": false, "missingFields": [], "warnings": [], "generationDurationMs": 1234, "schemaVersion": "2.0" }
+  }
+}
+```
+
+### Sources, units, and formulas
+
+- Binance volume and VWAP are Binance USD-M BTCUSDT futures venue metrics, not Hyperliquid volume. The exact bar VWAP formula is `quoteAssetVolume / baseAssetVolume`; when base volume is zero, VWAP is `null`.
+- Hyperliquid funding and open interest are Hyperliquid perpetual metrics from `info` `metaAndAssetCtxs`. Funding is an hourly decimal rate. `fundingAprSimple` is explicitly non-compounded simple annualization: `fundingRateHourly * 24 * 365`. Open interest is reported in BTC and USD notional, with `openInterestUsd = openInterestBtc * markPrice`.
+- Deribit options metrics are Deribit BTC option metrics. IV values are percentage points. Risk reversal is `call25DeltaIv - put25DeltaIv`; butterfly is `((call25DeltaIv + put25DeltaIv) / 2) - atmIv`.
+- Liquidation aggregates are Binance USD-M forced-order stream snapshots collected by the separate worker. They are not global market totals, not inferred from OI changes, and not guaranteed tick-complete.
+
+### Freshness and failure semantics
+
+Every provider block includes `source`, `asOf`, `receivedAt`, `ageMs`, `status`, `method`, and `reason`. Allowed statuses are `live`, `stale`, `partial`, `unavailable`, and `error`. Missing or failed numerical values are `null`, never zero. The top-level `btcIntraday.quality` block summarizes completeness, missing fields, per-source freshness, warnings, schema version, and generation duration.
+
+### Redis and stream worker
+
+The API reads liquidation aggregates from Upstash-compatible Redis using one of these pairs:
+
+```bash
+REDIS_REST_URL
+REDIS_REST_TOKEN
+UPSTASH_REDIS_REST_URL
+UPSTASH_REDIS_REST_TOKEN
+```
+
+Start the always-on collector outside Vercel serverless functions:
+
+```bash
+npm run market-stream-worker
+```
+
+Vercel serves HTTP requests and must not be treated as the persistent WebSocket host. Deploy the worker on an always-on process manager, VM, container, or worker platform that can maintain outbound WebSocket connections. The API is market-data only; it is not an execution venue, not an order-placement API, and not a guaranteed tick-complete feed.
+
+### Optional BTC intraday variables
+
+```bash
+OPTIONS_EXPIRY_COUNT=3
+OPTIONS_STRIKE_RANGE_PCT=15
+OPTIONS_MAX_CONCURRENCY=8
+LIQUIDATION_STALE_MS=120000
+```
