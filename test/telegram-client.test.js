@@ -25,6 +25,47 @@ test('sendTelegramMessage includes optional parse mode', async () => {
   assert.equal(payload.disable_web_page_preview, true);
 });
 
+test('sendTelegramMessage repairs unbalanced HTML entities before sending', async () => {
+  const originalFetch = globalThis.fetch;
+  let payload;
+
+  globalThis.fetch = async (_url, options) => {
+    payload = JSON.parse(options.body);
+    return {
+      ok: true,
+    };
+  };
+
+  try {
+    await sendTelegramMessage('token', 123, 'Run <code>npm test', { parseMode: 'HTML' });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(payload.text, 'Run <code>npm test</code>');
+  assert.equal(payload.parse_mode, 'HTML');
+});
+
+test('sendTelegramMessage escapes nested tags inside code entities', async () => {
+  const originalFetch = globalThis.fetch;
+  let payload;
+
+  globalThis.fetch = async (_url, options) => {
+    payload = JSON.parse(options.body);
+    return {
+      ok: true,
+    };
+  };
+
+  try {
+    await sendTelegramMessage('token', 123, '<code>literal <b>tag</b></code>', { parseMode: 'HTML' });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(payload.text, '<code>literal &lt;b&gt;tag&lt;/b&gt;</code>');
+});
+
 test('sendTelegramMessage omits parse mode by default', async () => {
   const originalFetch = globalThis.fetch;
   let payload;
